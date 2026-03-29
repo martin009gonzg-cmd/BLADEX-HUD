@@ -384,11 +384,18 @@ local function equipar(tool)
     return true
 end
 
-local function submitSlot(slotIndex)
+local function submitSlot(slotIndex, brainrotTool)
     local c = LP.Character
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
+
+    -- Obtener el id completo del brainrot desde sus atributos
+    -- Ej: "Brainrot84:Normal:2:666399:9253445601"
+    local brainrotId = brainrotTool and brainrotTool:GetAttribute("id")
+    if not brainrotId then
+        brainrotId = brainrotTool and brainrotTool.Name
+    end
 
     local posOriginal = hrp.CFrame
     local posSlot     = SLOT_POS[slotIndex]
@@ -397,25 +404,23 @@ local function submitSlot(slotIndex)
     hrp.CFrame = CFrame.new(posSlot)
     task.wait(0.3)
 
-    -- KrakenSacrificeSubmit es RemoteFunction, recibe el numero de slot (1, 2 o 3)
+    -- KrakenSacrificeSubmit(slotNumber, brainrotId)
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
     local disparado = false
     if rh then
         local submitRF = rh:FindFirstChild("KrakenSacrificeSubmit")
         if submitRF then
             local ok, result = pcall(function()
-                return submitRF:InvokeServer(slotIndex)
+                return submitRF:InvokeServer(slotIndex, brainrotId)
             end)
-            if ok then
+            print("[AutoSubmit] Submit slot " .. slotIndex .. " id=" .. tostring(brainrotId) .. " ok=" .. tostring(ok) .. " result=" .. tostring(result))
+            if ok and result then
                 disparado = true
-                print("[AutoSubmit] KrakenSacrificeSubmit slot " .. slotIndex .. " -> " .. tostring(result))
-            else
-                print("[AutoSubmit] Error KrakenSacrificeSubmit: " .. tostring(result))
             end
         end
     end
 
-    -- Fallback: ProximityPrompt mas cercano al slot si el remote fallo
+    -- Fallback: ProximityPrompt mas cercano si el remote fallo
     if not disparado then
         local bestPP, bestDist = nil, 20
         for _, d in ipairs(Workspace:GetDescendants()) do
@@ -569,7 +574,7 @@ local function _cicloSubmit()
             equipar(br)
             task.wait(0.2)
 
-            local ok = submitSlot(i)
+            local ok = submitSlot(i, br)
             print("[AutoSubmit] Slot " .. i .. (ok and " OK" or " fallo"))
 
             -- submitCooldown del Kraken = 5 segundos entre slots
