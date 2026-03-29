@@ -214,8 +214,8 @@ local SHOP_CONFIG = {
       check = function(n) return n == "lightbobber" end },
     { key="shop_brainrot",label="Brainrot Offer",   on=false,
       check = function(n) return n == "brainrotoffer" end },
-    { key="shop_rod",     label="Kraken's Rod", on=false,
-      check = function(n) return n == "krakensrod" end },
+    { key="shop_rod",     label="Kraken's Rod",     on=false,
+      check = function(n) return n == "krakensrod" or n:find("krakenrod") end },
 }
 
 local function itemDeseado(name)
@@ -235,40 +235,64 @@ local function comprarViaMerchantRemote()
 
     local ok, snap = pcall(function() return rfSnapshot:InvokeServer() end)
     if not ok or not snap then return end
-    if not snap.offers or not snap.currency then return end
+    if not snap.offers then return end
 
-    local monedas = snap.currency.amount or snap.currency
-    print("[AutoShop Kraken] Monedas: " .. monedas)
+    -- La moneda del Kraken puede estar en snap.currency (tabla con .amount) o directamente como número
+    local monedas
+    if type(snap.currency) == "table" then
+        monedas = snap.currency.amount or 0
+    elseif type(snap.currency) == "number" then
+        monedas = snap.currency
+    else
+        monedas = snap.goldCoins or snap.coins or snap.krakenCoins or 0
+    end
+    print("[AutoShop Kraken] Monedas: " .. tostring(monedas))
 
     for i, offer in ipairs(snap.offers) do
         if not autoBuyOn then break end
-        local id       = offer.id
-        local cost     = offer.cost
-        local stock    = offer.stock
+        local id        = offer.id
+        local cost      = offer.cost or 0
+        local stock     = offer.stock
         local purchased = offer.purchased
-        local name = tostring(id or ""):lower()
+        local name      = tostring(id or ""):lower():gsub("%s+", "")
 
         if not itemDeseado(name) then continue end
 
-        if stock and stock > 0 and not purchased and monedas >= cost then
+        -- stock nil significa ilimitado; purchased nil significa no comprado aún
+        local hayStock    = (stock == nil) or (stock and stock > 0)
+        local noComprado  = (purchased == nil) or (purchased == false)
+        local puedePagar  = (cost == 0) or (monedas >= cost)
+
+        if hayStock and noComprado and puedePagar then
             print("[AutoShop Kraken] Comprando: " .. name)
+            -- Intento 1: por índice
             local ok1, r1 = pcall(function() return rfBuy:InvokeServer(i) end)
             if ok1 and r1 then
                 monedas = monedas - cost
-                print("[AutoShop Kraken] OK: " .. name)
+                print("[AutoShop Kraken] OK (idx): " .. name)
             else
+                -- Intento 2: por id string
                 local ok2, r2 = pcall(function() return rfBuy:InvokeServer(id) end)
                 if ok2 and r2 then
                     monedas = monedas - cost
                     print("[AutoShop Kraken] OK (id): " .. name)
                 else
-                    print("[AutoShop Kraken] Fallo: " .. name)
+                    -- Intento 3: por tabla igual que el juego podría esperar
+                    local ok3 = pcall(function() rfBuy:InvokeServer({index=i, id=id}) end)
+                    if ok3 then
+                        monedas = monedas - cost
+                        print("[AutoShop Kraken] OK (tabla): " .. name)
+                    else
+                        print("[AutoShop Kraken] Fallo: " .. name)
+                    end
                 end
             end
             task.wait(0.5)
         end
     end
 end
+
+
 
 local function _cicloAutoBuy()
     while autoBuyOn and _autoBuyRunning do
@@ -354,16 +378,21 @@ local function getSlots()
     if not rfSnap then return nil end
     local ok, snap = pcall(function() return rfSnap:InvokeServer() end)
     if not ok or not snap then return nil end
-    return snap.slots or snap
+    -- Puede venir como snap.slots[] o directamente como array de slots
+    if snap.slots then return snap.slots end
+    if type(snap) == "table" and snap[1] then return snap end
+    return nil
 end
 
 local function slotNecesita(slots, i)
-    if not slots then return false end
-    local slot = slots[i] or slots[tostring(i)]
-    if slot then
-        return slot.submitted == false or slot.occupied == false
-    end
-    return false
+    local s = slots[i] or slots[tostring(i)]
+    if not s then return true end  -- si no hay info del slot, asumir que necesita
+    -- Revisar cualquier campo que indique "ya tiene brainrot"
+    if s.submitted == true  then return false end
+    if s.occupied  == true  then return false end
+    if s.filled    == true  then return false end
+    if s.brainrot  ~= nil   then return false end
+    return true
 end
 
 local function equipar(tool)
@@ -376,33 +405,30 @@ local function equipar(tool)
     return true
 end
 
-local function submitSlot(slotIndex, brainrotId)
-    local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
-    if not rh then return false end
-    local submitRemote = rh:FindFirstChild("KrakenSacrificeSubmit")
-    if submitRemote then
-        local ok = pcall(function()
-            submitRemote:InvokeServer(slotIndex, brainrotId)
-        end)
-        if ok then return true end
-    end
-
-    -- Fallback: teleport + ProximityPrompt igual que antes
+local function submitSlot(slotIndex)
     local c = LP.Character
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
 
     local posOriginal = hrp.CFrame
-    local posSlot = SLOT_POS[slotIndex]
-    local ppName  = SLOT_PP[slotIndex]
+    local posSlot     = SLOT_POS[slotIndex]
+    local ppName      = SLOT_PP[slotIndex]
 
+    -- Teleport al slot
     hrp.CFrame = CFrame.new(posSlot)
-    task.wait(0.15)
+    task.wait(0.3)
 
     local disparado = false
-    local stand = Workspace:FindFirstChild("KrakenStand") or Workspace:FindFirstChild("StPatricksStand")
+
+    -- Buscar el stand del Kraken (probar varios nombres posibles)
+    local stand = Workspace:FindFirstChild("KrakenStand")
+                  or Workspace:FindFirstChild("KrakenAltar")
+                  or Workspace:FindFirstChild("KrakenEvent")
+                  or Workspace:FindFirstChild("KrakenSacrificeStand")
+
     if stand then
+        -- Intento 1: carpeta con nombre del slot (Brainrot1, Brainrot2, Brainrot3)
         local brainrotFolder = stand:FindFirstChild(ppName)
         if brainrotFolder then
             for _, d in ipairs(brainrotFolder:GetDescendants()) do
@@ -413,6 +439,8 @@ local function submitSlot(slotIndex, brainrotId)
                 end
             end
         end
+
+        -- Intento 2: cualquier PP dentro del stand más cercano a la posición del slot
         if not disparado then
             local bestPP, bestDist = nil, math.huge
             for _, d in ipairs(stand:GetDescendants()) do
@@ -420,7 +448,10 @@ local function submitSlot(slotIndex, brainrotId)
                     local part = d.Parent
                     if part and part:IsA("BasePart") then
                         local dist = (part.Position - posSlot).Magnitude
-                        if dist < bestDist then bestDist = dist; bestPP = d end
+                        if dist < bestDist then
+                            bestDist = dist
+                            bestPP   = d
+                        end
                     end
                 end
             end
@@ -431,7 +462,28 @@ local function submitSlot(slotIndex, brainrotId)
         end
     end
 
-    task.wait(0.2)
+    -- Intento 3 (fallback global): cualquier PP en el mundo cerca del slot
+    if not disparado then
+        local bestPP, bestDist = nil, 15  -- radio máximo 15 studs
+        for _, d in ipairs(Workspace:GetDescendants()) do
+            if d:IsA("ProximityPrompt") then
+                local part = d.Parent
+                if part and part:IsA("BasePart") then
+                    local dist = (part.Position - posSlot).Magnitude
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestPP   = d
+                    end
+                end
+            end
+        end
+        if bestPP then
+            pcall(function() fireproximityprompt(bestPP) end)
+            disparado = true
+        end
+    end
+
+    task.wait(0.3)
     hrp.CFrame = posOriginal
     return disparado
 end
@@ -440,6 +492,8 @@ local function hacerClaim()
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
     if rh then
         local fn = rh:FindFirstChild("KrakenClaimFinal")
+                   or rh:FindFirstChild("KrakenClaim")
+                   or rh:FindFirstChild("KrakenReward")
         if fn then pcall(function() fn:InvokeServer() end) end
     end
     task.wait(0.3)
@@ -456,22 +510,20 @@ end
 local function getResetSegundos()
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
     if not rh then return nil end
-    -- Intentar KrakenCounterSnapshot primero
-    local rfCounter = rh:FindFirstChild("KrakenCounterSnapshot")
-    if rfCounter then
-        local ok, snap = pcall(function() return rfCounter:InvokeServer() end)
-        if ok and snap then
-            local t = snap.timeUntilReset or snap.resetIn or snap.timer or snap.timeLeft
-            if t and t > 0 then return t end
-        end
-    end
-    -- Fallback: KrakenSacrificeSnapshot
-    local rfSnap = rh:FindFirstChild("KrakenSacrificeSnapshot")
-    if rfSnap then
-        local ok, snap = pcall(function() return rfSnap:InvokeServer() end)
-        if ok and snap then
-            local t = snap.timeUntilReset or snap.resetIn or snap.timer or snap.timeLeft
-            if t and t > 0 then return t end
+    -- Probar remotes del Kraken en orden de probabilidad
+    local remotesParaTimer = {
+        "KrakenCounterSnapshot",
+        "KrakenSacrificeSnapshot",
+        "KrakenSnapshot",
+    }
+    for _, rname in ipairs(remotesParaTimer) do
+        local rf = rh:FindFirstChild(rname)
+        if rf then
+            local ok, snap = pcall(function() return rf:InvokeServer() end)
+            if ok and snap then
+                local t = snap.timeUntilReset or snap.resetIn or snap.timer or snap.timeLeft or snap.countdown
+                if t and t > 0 then return t end
+            end
         end
     end
     -- Fallback: buscar en GUI
@@ -482,7 +534,7 @@ local function getResetSegundos()
             for _, d in ipairs(gui:GetDescendants()) do
                 if (d:IsA("TextLabel") or d:IsA("TextButton")) and d.Visible then
                     local txt = (d.Text or ""):upper()
-                    if txt:find("RESET") or txt:find("NEXT ROUND") then
+                    if txt:find("RESET") or txt:find("NEXT ROUND") or txt:find("KRAKEN") then
                         local m, s = txt:match("(%d+):(%d+)")
                         if m and s then return tonumber(m)*60 + tonumber(s) end
                         local sec = txt:match("(%d+)S")
@@ -582,8 +634,8 @@ local function _cicloSubmit()
             equipar(br)
             task.wait(0.2)
 
-            local ok = submitSlot(i, br.Name)
-            print("[AutoSubmit] Slot " .. i .. (ok and " OK" or " fallo PP"))
+            local ok = submitSlot(i)
+            print("[AutoSubmit] Slot " .. i .. (ok and " ✓ OK" or " ✗ fallo PP"))
 
             -- Esperar entre slots (ajustable)
             if i < 3 then
