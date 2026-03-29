@@ -655,12 +655,7 @@ local autoFarmToggle2 = basesSection:AddToggle({
     end
 })
 
--- ── Boss Bases ──
-local bossSection = mainTab:DrawSection({ Name="Boss Bases (ZEUS / DEVIL)", Position="left", Minimized=true })
-
-bossSection:AddLabel("⚡ Activa una o ambas para farmear bases jefe")
-
-bossSection:AddToggle({
+basesSection:AddToggle({
     Name    = "Auto Farm ZEUS",
     Flag    = "auto_zeus",
     Default = false,
@@ -669,9 +664,8 @@ bossSection:AddToggle({
         if v and not _G.AutoLBFarm then
             _G.AutoLBFarm = true
             startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("⚡ Auto Farm ZEUS activo!", 4)
+            notify("Auto Farm ZEUS activo!", 4)
         elseif not v and not _G.AutoDevil then
-            -- Si tampoco está Devil, detener el loop
             _G.AutoLBFarm = false
             stopLoop("AutoLBFarm")
             notify("Auto Farm ZEUS desactivado.", 3)
@@ -679,7 +673,7 @@ bossSection:AddToggle({
     end,
 })
 
-bossSection:AddToggle({
+basesSection:AddToggle({
     Name    = "Auto Farm DEVIL",
     Flag    = "auto_devil",
     Default = false,
@@ -688,7 +682,7 @@ bossSection:AddToggle({
         if v and not _G.AutoLBFarm then
             _G.AutoLBFarm = true
             startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("😈 Auto Farm DEVIL activo!", 4)
+            notify("Auto Farm DEVIL activo!", 4)
         elseif not v and not _G.AutoZeus then
             _G.AutoLBFarm = false
             stopLoop("AutoLBFarm")
@@ -697,20 +691,14 @@ bossSection:AddToggle({
     end,
 })
 
-bossSection:AddButton({ Name="Teleport → ZEUS", Callback=function()
+basesSection:AddButton({ Name="Tp ZEUS", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        hrp.CFrame = BASE_COORDS.ZEUS.block
-        notify("Teleportado a ZEUS.", 3)
-    end
+    if hrp then hrp.CFrame = BASE_COORDS.ZEUS.block notify("Teleportado a ZEUS.", 3) end
 end })
 
-bossSection:AddButton({ Name="Teleport → DEVIL", Callback=function()
+basesSection:AddButton({ Name="Tp DEVIL", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then
-        hrp.CFrame = BASE_COORDS.DEVIL.block
-        notify("Teleportado a DEVIL.", 3)
-    end
+    if hrp then hrp.CFrame = BASE_COORDS.DEVIL.block notify("Teleportado a DEVIL.", 3) end
 end })
 
 local baseDropValues = {}
