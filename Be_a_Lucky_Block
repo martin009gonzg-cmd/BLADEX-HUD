@@ -807,11 +807,6 @@ basesSection:AddToggle({
     end,
 })
 
-basesSection:AddButton({ Name="Tp Inicio de Pista", Callback=function()
-    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then hrp.CFrame = TRACK_START notify("Teleportado al inicio de pista.", 3) end
-end })
-
 local baseDropValues = {}
 for i = 1, 14 do table.insert(baseDropValues, "Base " .. i) end
 
@@ -885,25 +880,31 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
--- ───── AUTO FARM ─────
-local afSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+-- ==================== TAB: MISC ====================
+local miscTab = Window:DrawTab({
+    Name = "Misc",
+    Icon = "tool",
+    Type = "Single",
+})
 
-afSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
+local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+
+autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
     Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
 
-afSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
+autoFarmSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
     Callback=function(v) toggle("AutoRebirth", v) end })
 
-afSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
+autoFarmSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
     Callback=function(v) toggle("AutoSpeed", v) end })
 
-afSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
+autoFarmSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
     Callback=function(v) toggle("AutoContainer", v) end })
 
-afSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
+autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
     Callback=function(v) toggle("AutoPlaceBest", v) end })
 
-afSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
+autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
     Callback=function(v) toggle("AutoUpgrades", v) end })
 
 
@@ -1022,12 +1023,12 @@ end })
 
 -- ==================== TAB: AJUSTES ====================
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
-local settingsSection = settingsTab:DrawSection({ Name="Configuracion", Position="full" })
+local settingsSection = settingsTab:DrawSection({ Name="UI Settings", Position="full" })
 
-settingsSection:AddToggle({ Name="Siempre Mostrar Ventana", Default=false,
+settingsSection:AddToggle({ Name="Always Show Frame", Default=false,
     Callback=function(v) pcall(function() Window.AlwaysShowTab = v end) end })
 
-settingsSection:AddColorPicker({ Name="Color de Resalte", Default=Compkiller.Colors.Highlight,
+settingsSection:AddColorPicker({ Name="Highlight", Default=Compkiller.Colors.Highlight,
     Callback=function(v) Compkiller:ChangeHighlightColor(v) end })
 
 local themes = {
@@ -1037,7 +1038,7 @@ local themes = {
     ["Purple Rose"]= Color3.fromRGB(160, 80, 160),
     Skeet          = Color3.fromRGB(200, 60, 60),
 }
-settingsSection:AddDropdown({ Name="Tema", Default="Default",
+settingsSection:AddDropdown({ Name="Select Theme", Default="Default",
     Values={"Default","Dark Green","Dark Blue","Purple Rose","Skeet"},
     Callback=function(v)
         local color = themes[v] or themes.Default
