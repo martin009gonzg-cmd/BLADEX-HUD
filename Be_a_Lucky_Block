@@ -579,18 +579,6 @@ local function toggle(name, val)
 end
 
 -- ==================== UI ====================
--- Guard: esperar que Compkiller este completamente inicializado
-if not Compkiller or not Compkiller.newNotify then
-    local deadline = tick() + 5
-    repeat task.wait(0.3) until (getgenv().Compkiller and getgenv().Compkiller.newNotify) or tick() > deadline
-    Compkiller = getgenv().Compkiller
-end
-
-if not Compkiller or not Compkiller.newNotify then
-    error("[BLADEX] Compkiller no esta listo. Ejecuta el loader primero.")
-    return
-end
-
 local Notifier = Compkiller.newNotify()
 Compkiller:ChangeHighlightColor(Color3.fromRGB(195, 192, 215))
 
@@ -618,12 +606,12 @@ end
 local mainTab = Window:DrawTab({
     Name            = "BE A BRAINROT",
     Icon            = "crown",
-    Type            = "Double",
+    Type            = "Single",
     EnableScrolling = true,
 })
 
 -- ───────────── IZQUIERDA ─────────────
-local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="left", Minimized=true })
+local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="full", Minimized=true })
 
 local autoFarmToggle2 = basesSection:AddToggle({
     Name="Auto Farm Mejores Brainrots", Default=false,
@@ -796,8 +784,15 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
--- ───── AUTO FARM (izquierda) ─────
-local autoFarmSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+-- ==================== TAB: MISC ====================
+local miscTab = Window:DrawTab({
+    Name            = "Misc",
+    Icon            = "wrench",
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
 
 autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
     Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
@@ -817,9 +812,10 @@ autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest"
 autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
     Callback=function(v) toggle("AutoUpgrades", v) end })
 
--- ───────────── DERECHA ─────────────
--- ───── MOVEMENT ─────
-local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
+
+
+-- ───── MISC IZQUIERDA: MOVEMENT ─────
+local movSection = miscTab:DrawSection({ Name="Movement", Position="left", Minimized=true })
 
 local speedToggle = movSection:AddToggle({
     Name="Velocidad Personalizada", Default=false,
@@ -838,7 +834,8 @@ movSection:AddSlider({
     Callback=function(value) sliderValue = value end
 })
 
-local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
+-- ───── MISC DERECHA: RECOMPENSAS ─────
+local rewardSection = miscTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
 
 rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
     if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
@@ -929,12 +926,8 @@ rewardSection:AddButton({ Name="Vender Todos los Brainrots", Callback=function()
     else notify("Remoto SellAllBrainrots no encontrado.", 4) end
 end })
 
--- ==================== TAB: MISC ====================
-local miscTab = Window:DrawTab({
-    Name = "Misc",
-    Icon = "wrench",
-    Type = "Single",
-})
+-- ==================== CATEGORIA: MISC ====================
+Window:DrawCategory({ Name="Misc" })
 
 -- ==================== TAB: AJUSTES ====================
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
@@ -963,9 +956,7 @@ settingsSection:AddDropdown({ Name="Select Theme", Default="Default",
 settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 -- ==================== CONFIG + INICIO ====================
-pcall(function()
-    Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
-end)
+Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
 
 speedToggle:SetValue(false)
 autoFarmToggle2:SetValue(false)
