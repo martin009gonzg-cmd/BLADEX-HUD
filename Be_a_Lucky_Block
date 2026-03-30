@@ -24,13 +24,15 @@ local skins = {
 local codes = { "release" }
 
 -- ==================== MULTI-BASE FARM ====================
+-- TrackStart real: 709.27, 36.79, -2121.97
+-- SpawnLocation real: 736.36, 36.24, -2155.12
 local ALL_BASES = {}
 for i = 1, 14 do
     ALL_BASES[i] = {
         name     = "base" .. i,
-        teleport = Vector3.new(715, 39, -2122),
-        move     = Vector3.new(710, 39, -2122),
-        respawn  = Vector3.new(737, 39, -2118),
+        teleport = Vector3.new(709.27, 36.79, -2121.97),
+        move     = Vector3.new(705.00, 36.79, -2121.97),
+        respawn  = Vector3.new(736.36, 36.24, -2155.12),
     }
 end
 
@@ -102,25 +104,71 @@ local function findEvent(serviceName, reName)
 end
 
 -- ==================== REMOTES ====================
+-- RunningService (lucky block farm)
 local lbRF = {
     StartRun       = findRemote("RunningService",    "StartRun"),
     StartMove      = findRemote("RunningService",    "StartMove"),
     OpenLuckyBlock = findRemote("RunningService",    "OpenLuckyBlock"),
     UpdateCFrame   = findRemote("RunningService",    "UpdateCFrame"),
     EndMove        = findRemote("RunningService",    "EndMove"),
-    OpenBossBlock  = findRemote("LuckyBlockService", "Open"),  -- boss blocks
+    Collected      = findRemote("RunningService",    "Collected"),
+    Caught         = findRemote("RunningService",    "Caught"),
+    OpenBossBlock  = findRemote("LuckyBlockService", "Open"),
 }
 
+-- Servicios generales
 local rf = {
+    -- Container / Brainrot
     Brainrot           = findRemote("ContainerService", "UpgradeBrainrot"),
     WorkUpdate         = findEvent("ContainerService",  "WorkUpdate"),
     Container          = findRemote("ContainerService", "BuyContainer"),
+    Place              = findRemote("ContainerService", "Place"),
     PlaceBest          = findRemote("ContainerService", "PlaceBest"),
+    SwapBrainrot       = findRemote("ContainerService", "SwapBrainrot"),
+    PickupBrainrot     = findRemote("ContainerService", "PickupBrainrot"),
     CollectCash        = findRemote("ContainerService", "CollectCash"),
     CollectOfflineCash = findRemote("ContainerService", "CollectOfflineCash"),
+    -- Inventory
+    SellBrainrots      = findRemote("InventoryService", "SellBrainrots"),
+    SellAllBrainrots   = findRemote("InventoryService", "SellAllBrainrots"),
+    SellBrainrot       = findRemote("InventoryService", "SellBrainrot"),
+    -- Rebirth
     Rebirth            = findRemote("RebirthService",   "Rebirth"),
+    InitSkip           = findRemote("RebirthService",   "InitSkip"),
+    -- Upgrades
     Speed              = findRemote("UpgradesService",  "Upgrade"),
+    -- Skins
     BuySkin            = findRemote("SkinService",      "BuySkin"),
+    EquipSkin          = findRemote("SkinService",      "EquipSkin"),
+    -- Pickup
+    DropAll            = findRemote("PickupService",    "DropAll"),
+    Pickup             = findRemote("PickupService",    "Pickup"),
+    -- Warp
+    WarpToLocation     = findRemote("WarpService",      "WarpToLocation"),
+    -- Plot
+    TeleportToPlot     = findRemote("PlotService",      "TeleportToPlot"),
+    GetMyPlotId        = findRemote("PlotService",      "GetMyPlotId"),
+    -- Daily Reward
+    DailyClaimFirst    = findRemote("DailyRewardService", "AttemptClaimFirst"),
+    DailyClaimVIP      = findRemote("DailyRewardService", "ClaimVIPReward"),
+    DailyClaim         = findRemote("DailyRewardService", "ClaimReward"),
+    -- Free Shop
+    FreeShopClaim      = findRemote("FreeShopService",  "Claim"),
+    -- Quests
+    QuestRefresh       = findRemote("QuestService",     "RefreshQuests"),
+    QuestClaim         = findRemote("QuestService",     "ClaimReward"),
+    -- Spin Wheel
+    SpinWheel          = findRemote("SpinWheelService", "SpinWheel"),
+    SpinAll            = findRemote("SpinWheelService", "SpinAll"),
+    -- Base Event
+    ClaimLuminous      = findRemote("BaseEventService", "ClaimLuminousReward"),
+    ClaimBaseEvent     = findRemote("BaseEventService", "ClaimReward"),
+    -- Season Pass
+    ClaimPassReward    = findRemote("SeasonPassService","ClaimPassReward"),
+    -- Codes
+    RedeemCode         = findRemote("CodesService",     "RedeemCode"),
+    -- Gifting
+    GiftBrainrot       = findRemote("GiftingService",   "GiftBrainrot"),
 }
 
 local GetRewardRemote = nil
@@ -146,44 +194,53 @@ _G.AutoCash             = _G.AutoCash             or false
 _G.AutoBuyLuckyblock    = _G.AutoBuyLuckyblock    or false
 _G.AutoClaimEventPass   = _G.AutoClaimEventPass   or false
 _G.AutoPlaytimeRewards  = _G.AutoPlaytimeRewards  or false
+_G.AutoSellBrainrots    = _G.AutoSellBrainrots    or false
+_G.AutoSpinWheel        = _G.AutoSpinWheel        or false
+_G.AutoDailyReward      = _G.AutoDailyReward      or false
+_G.AutoQuestClaim       = _G.AutoQuestClaim       or false
 
--- ==================== COORDENADAS (SCAN REAL) ====================
+-- ==================== COORDENADAS REALES (SCAN v6) ====================
+-- runner normal = TrackStart: 709.27, 36.79, -2121.97
+-- runner ZEUS   = SPAWN_PLACEHOLDER: 380.95, 99.82, -2097.84
+local TRACK_START = CFrame.new(709.27, 36.79, -2121.97)
+
 local BASE_COORDS = {
-    -- Boss blocks con coordenadas reales del scan
+    -- Boss: ZEUS confirmado en scan. DEVIL no activo actualmente.
     ZEUS  = {
-        block  = CFrame.new(721.06, 40.77, -2172.57),
-        runner = CFrame.new(709.27, 36.78, -2121.96),
+        block  = CFrame.new(354.68, 99.88, -2121.59),   -- Workspace.Bases.ZEUS.Spawner
+        runner = CFrame.new(380.95, 99.82, -2097.84),   -- CHOSEN_PLATFORM.SPAWN_PLACEHOLDER
     },
     DEVIL = {
-        block  = CFrame.new(720.34, 40.02, -2172.41),
-        runner = CFrame.new(709.27, 36.78, -2121.96),
+        block  = CFrame.new(354.68, 99.88, -2121.59),   -- placeholder (no activo aun)
+        runner = CFrame.new(380.95, 99.82, -2097.84),
     },
-    base1  = { block = CFrame.new(640,  46, -2035), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base2  = { block = CFrame.new(559,  46, -2208), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base3  = { block = CFrame.new(481,  46, -2035), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base4  = { block = CFrame.new(400,  46, -2211), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base5  = { block = CFrame.new(291,  46, -2036), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base6  = { block = CFrame.new(210,  46, -2212), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base7  = { block = CFrame.new(131,  46, -2036), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base8  = { block = CFrame.new(51,   46, -2212), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base9  = { block = CFrame.new(-61,  46, -2036), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base10 = { block = CFrame.new(-140, 46, -2212), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base11 = { block = CFrame.new(-218, 46, -2036), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base12 = { block = CFrame.new(-299, 46, -2212), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base13 = { block = CFrame.new(-379, 46, -2036), runner = CFrame.new(588.96, 38.18, -2127.26) },
-    base14 = { block = CFrame.new(-495, 46, -2123), runner = CFrame.new(588.96, 38.18, -2127.26) },
+    -- Bases normales: posiciones reales de Workspace.Bases.baseN.Spawner
+    base1  = { block = CFrame.new(640.31, 36.03, -2026.69), runner = TRACK_START },
+    base2  = { block = CFrame.new(561.22, 36.03, -2217.27), runner = TRACK_START },
+    base3  = { block = CFrame.new(480.92, 36.03, -2025.71), runner = TRACK_START },
+    base4  = { block = CFrame.new(401.86, 36.03, -2217.27), runner = TRACK_START },
+    base5  = { block = CFrame.new(291.30, 36.03, -2026.69), runner = TRACK_START },
+    base6  = { block = CFrame.new(212.22, 36.03, -2217.27), runner = TRACK_START },
+    base7  = { block = CFrame.new(131.92, 36.03, -2025.71), runner = TRACK_START },
+    base8  = { block = CFrame.new( 52.86, 36.03, -2217.27), runner = TRACK_START },
+    base9  = { block = CFrame.new(-60.01, 36.03, -2025.71), runner = TRACK_START },
+    base10 = { block = CFrame.new(-138.92, 36.03, -2217.27), runner = TRACK_START },
+    base11 = { block = CFrame.new(-219.22, 36.03, -2025.71), runner = TRACK_START },
+    base12 = { block = CFrame.new(-298.28, 36.03, -2217.27), runner = TRACK_START },
+    base13 = { block = CFrame.new(-378.58, 36.03, -2025.71), runner = TRACK_START },
+    base14 = { block = CFrame.new(-503.22, 36.03, -2122.19), runner = TRACK_START },
 }
 
 -- ==================== CONFIG ====================
 local LB_CFG = {
     MAX_RETRIES      = 3,
-    BLOCK_COOLDOWN   = 1.8,     -- reducido de 2.5
-    ANTI_BUG_TIMEOUT = 6,       -- reducido de 8
+    BLOCK_COOLDOWN   = 1.8,
+    ANTI_BUG_TIMEOUT = 6,
     DELAYS = {
-        AFTER_TELEPORT = 0.15,  -- reducido de 0.3
-        AFTER_OPEN     = 0.8,   -- reducido de 1.2
-        AFTER_RUN      = 0.3,   -- reducido de 0.5
-        CYCLE_END      = 0.8,   -- reducido de 1.5
+        AFTER_TELEPORT = 0.15,
+        AFTER_OPEN     = 0.8,
+        AFTER_RUN      = 0.3,
+        CYCLE_END      = 0.8,
         RESPAWN_WAIT   = 3.0,
     },
 }
@@ -301,7 +358,7 @@ local function lbFarmCycle(baseName)
         local waitTime = LB_CFG.BLOCK_COOLDOWN - (tick() - lastBlockOpen)
         if waitTime > 0 then task.wait(waitTime) end
 
-        -- Boss blocks usan LuckyBlockService.Open, bases normales usan RunningService.OpenLuckyBlock
+        -- Boss: LuckyBlockService.Open | Normal: RunningService.OpenLuckyBlock
         if isBoss then
             local bossName = baseName == "ZEUS" and "ZEUS" or "DEVIL"
             if lbRF.OpenBossBlock then
@@ -362,8 +419,8 @@ local function loopAutoLBFarm()
             task.wait(2)
         else
             local baseName = bossBase or bases[lbBaseIndex]
-            local ok, err = pcall(lbFarmCycle, baseName)
-            if not ok then
+            local ok2, err = pcall(lbFarmCycle, baseName)
+            if not ok2 then
                 warn("[LBFarm] Error: " .. tostring(err))
                 task.wait(2)
             else
@@ -424,6 +481,36 @@ local function loopAutoRebirth()
 end
 local function loopAutoPlaceBest()
     while _G.AutoPlaceBest do if rf.PlaceBest then safeInvoke(rf.PlaceBest) end task.wait(3) end
+end
+
+local function loopAutoSellBrainrots()
+    while _G.AutoSellBrainrots do
+        if rf.SellAllBrainrots then safeInvoke(rf.SellAllBrainrots) end
+        task.wait(5)
+    end
+end
+
+local function loopAutoSpinWheel()
+    while _G.AutoSpinWheel do
+        if rf.SpinAll then safeInvoke(rf.SpinAll)
+        elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) end
+        task.wait(3)
+    end
+end
+
+local function loopAutoDailyReward()
+    while _G.AutoDailyReward do
+        if rf.DailyClaimFirst then safeInvoke(rf.DailyClaimFirst) end
+        if rf.DailyClaim then safeInvoke(rf.DailyClaim) end
+        task.wait(30)
+    end
+end
+
+local function loopAutoQuestClaim()
+    while _G.AutoQuestClaim do
+        if rf.QuestClaim then safeInvoke(rf.QuestClaim) end
+        task.wait(10)
+    end
 end
 
 local function loopAutoBuyLuckyblock()
@@ -542,6 +629,10 @@ local LOOP_MAP = {
     AutoBuyLuckyblock   = loopAutoBuyLuckyblock,
     AutoClaimEventPass  = loopAutoClaimEventPass,
     AutoPlaytimeRewards = loopAutoPlaytimeRewards,
+    AutoSellBrainrots   = loopAutoSellBrainrots,
+    AutoSpinWheel       = loopAutoSpinWheel,
+    AutoDailyReward     = loopAutoDailyReward,
+    AutoQuestClaim      = loopAutoQuestClaim,
 }
 
 local function toggle(name, val)
@@ -567,7 +658,7 @@ Compkiller:ChangeHighlightColor(Color3.fromRGB(195, 192, 215))
 
 local ConfigManager = Compkiller:ConfigManager({
     Directory = "BLADEX-HUB",
-    Config    = "BLADEX-BrainrotV3",
+    Config    = "BLADEX-BrainrotV6",
 })
 
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
@@ -679,10 +770,8 @@ local autoFarmToggle2 = basesSection:AddToggle({
 })
 
 basesSection:AddToggle({
-    Name    = "Auto Farm ZEUS",
-    Flag    = "auto_zeus",
-    Default = false,
-    Callback = function(v)
+    Name="Auto Farm ZEUS", Flag="auto_zeus", Default=false,
+    Callback=function(v)
         _G.AutoZeus = v
         if v and not _G.AutoLBFarm then
             _G.AutoLBFarm = true
@@ -697,10 +786,8 @@ basesSection:AddToggle({
 })
 
 basesSection:AddToggle({
-    Name    = "Auto Farm DEVIL",
-    Flag    = "auto_devil",
-    Default = false,
-    Callback = function(v)
+    Name="Auto Farm DEVIL", Flag="auto_devil", Default=false,
+    Callback=function(v)
         _G.AutoDevil = v
         if v and not _G.AutoLBFarm then
             _G.AutoLBFarm = true
@@ -719,19 +806,17 @@ basesSection:AddButton({ Name="Tp ZEUS", Callback=function()
     if hrp then hrp.CFrame = BASE_COORDS.ZEUS.block notify("Teleportado a ZEUS.", 3) end
 end })
 
-basesSection:AddButton({ Name="Tp DEVIL", Callback=function()
+basesSection:AddButton({ Name="Tp TrackStart", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then hrp.CFrame = BASE_COORDS.DEVIL.block notify("Teleportado a DEVIL.", 3) end
+    if hrp then hrp.CFrame = TRACK_START notify("Teleportado a TrackStart.", 3) end
 end })
 
 local baseDropValues = {}
 for i = 1, 14 do table.insert(baseDropValues, "Base " .. i) end
 
 basesSection:AddDropdown({
-    Name    = "Base a Farmear",
-    Default = "Base 14",
-    Values  = baseDropValues,
-    Callback = function(v)
+    Name="Base a Farmear", Default="Base 14", Values=baseDropValues,
+    Callback=function(v)
         local num = tonumber(v:match("%d+"))
         if num and num >= 1 and num <= 14 then
             for j = 1, 14 do selectedBases[j] = (j == num) end
@@ -799,6 +884,7 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
+-- ───── AUTO FARM ─────
 local afSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
 
 afSection:AddToggle({ Name="Auto Cash", Flag="auto_cash", Default=false,
@@ -819,6 +905,19 @@ afSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Defa
 afSection:AddToggle({ Name="Upgrade Brainrots", Flag="auto_upgrades", Default=false,
     Callback=function(v) toggle("AutoUpgrades", v) end })
 
+afSection:AddToggle({ Name="Auto Sell All Brainrots", Flag="auto_sell", Default=false,
+    Callback=function(v) toggle("AutoSellBrainrots", v) end })
+
+afSection:AddToggle({ Name="Auto Spin Wheel", Flag="auto_spin", Default=false,
+    Callback=function(v) toggle("AutoSpinWheel", v) end })
+
+afSection:AddToggle({ Name="Auto Daily Reward", Flag="auto_daily", Default=false,
+    Callback=function(v) toggle("AutoDailyReward", v) end })
+
+afSection:AddToggle({ Name="Auto Quest Claim", Flag="auto_quest", Default=false,
+    Callback=function(v) toggle("AutoQuestClaim", v) end })
+
+-- ───── MOVEMENT ─────
 local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
 
 local speedToggle = movSection:AddToggle({
@@ -839,7 +938,7 @@ movSection:AddSlider({
 })
 
 -- ───────────── DERECHA ─────────────
-local rewardSection = mainTab:DrawSection({ Name="Recompensas Especiales", Position="right", Minimized=true })
+local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
 
 rewardSection:AddButton({ Name="Pickup All Your Brainrots", Callback=function()
     local username = LP.Name
@@ -873,10 +972,48 @@ rewardSection:AddButton({ Name="Pickup All Your Brainrots", Callback=function()
     notify("Picked up all Brainrots!", 5)
 end })
 
+rewardSection:AddButton({ Name="Sell All Brainrots", Callback=function()
+    if rf.SellAllBrainrots then
+        safeInvoke(rf.SellAllBrainrots)
+        notify("Brainrots vendidos.", 3)
+    else
+        notify("Remoto SellAllBrainrots no encontrado.", 4)
+    end
+end })
+
+rewardSection:AddButton({ Name="Drop All Pickup", Callback=function()
+    if rf.DropAll then safeInvoke(rf.DropAll) notify("DropAll enviado.", 3)
+    else notify("Remoto DropAll no encontrado.", 4) end
+end })
+
 rewardSection:AddButton({ Name="Reclamar Bloque Espiritual", Callback=function()
     if not rf.GetReward then notify("Remoto GetReward no encontrado.", 5) return end
     local ok, result = safeInvoke(rf.GetReward)
     notify(ok and "Reclamo enviado!" or "Error: " .. tostring(result), 5)
+end })
+
+rewardSection:AddButton({ Name="Claim Base Event Reward", Callback=function()
+    if rf.ClaimBaseEvent then safeInvoke(rf.ClaimBaseEvent) notify("Base Event reclamado.", 3)
+    elseif rf.ClaimLuminous then safeInvoke(rf.ClaimLuminous) notify("Luminous Reward reclamado.", 3)
+    else notify("Remoto ClaimReward no encontrado.", 4) end
+end })
+
+rewardSection:AddButton({ Name="Claim Free Shop", Callback=function()
+    if rf.FreeShopClaim then safeInvoke(rf.FreeShopClaim) notify("Free Shop reclamado.", 3)
+    else notify("Remoto FreeShop.Claim no encontrado.", 4) end
+end })
+
+rewardSection:AddButton({ Name="Claim Daily Rewards", Callback=function()
+    if rf.DailyClaimFirst then safeInvoke(rf.DailyClaimFirst) end
+    if rf.DailyClaim then safeInvoke(rf.DailyClaim) end
+    if rf.DailyClaimVIP then safeInvoke(rf.DailyClaimVIP) end
+    notify("Daily Rewards reclamados.", 3)
+end })
+
+rewardSection:AddButton({ Name="Spin All Wheel", Callback=function()
+    if rf.SpinAll then safeInvoke(rf.SpinAll) notify("SpinAll enviado.", 3)
+    elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) notify("SpinWheel enviado.", 3)
+    else notify("Remoto SpinWheel no encontrado.", 4) end
 end })
 
 rewardSection:AddButton({ Name="Redeem All Codes", Callback=function()
@@ -947,6 +1084,11 @@ rewardSection:AddButton({ Name="Claim Playtime Rewards", Callback=function()
     notify("Playtime rewards reclamados.", 4)
 end })
 
+rewardSection:AddButton({ Name="Claim Quest Reward", Callback=function()
+    if rf.QuestClaim then safeInvoke(rf.QuestClaim) notify("Quest reward reclamado.", 3)
+    else notify("Remoto QuestClaim no encontrado.", 4) end
+end })
+
 -- ==================== TAB: AJUSTES ====================
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
 local settingsSection = settingsTab:DrawSection({ Name="Configuracion", Position="full" })
@@ -958,11 +1100,11 @@ settingsSection:AddColorPicker({ Name="Color Highlight", Default=Compkiller.Colo
     Callback=function(v) Compkiller:ChangeHighlightColor(v) end })
 
 local themes = {
-    Default      = Color3.fromRGB(90, 110, 160),
-    ["Dark Green"]   = Color3.fromRGB(60, 150, 90),
-    ["Dark Blue"]    = Color3.fromRGB(50, 90, 200),
-    ["Purple Rose"]  = Color3.fromRGB(160, 80, 160),
-    Skeet        = Color3.fromRGB(200, 60, 60),
+    Default        = Color3.fromRGB(90, 110, 160),
+    ["Dark Green"] = Color3.fromRGB(60, 150, 90),
+    ["Dark Blue"]  = Color3.fromRGB(50, 90, 200),
+    ["Purple Rose"]= Color3.fromRGB(160, 80, 160),
+    Skeet          = Color3.fromRGB(200, 60, 60),
 }
 settingsSection:AddDropdown({ Name="Tema", Default="Default",
     Values={"Default","Dark Green","Dark Blue","Purple Rose","Skeet"},
@@ -971,7 +1113,7 @@ settingsSection:AddDropdown({ Name="Tema", Default="Default",
         Compkiller:ChangeHighlightColor(color)
     end })
 
-settingsSection:AddLabel("BLADEX HUD | Be a Lucky Block")
+settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 -- ==================== CONFIG + INICIO ====================
 pcall(function()
@@ -982,5 +1124,5 @@ speedToggle:SetValue(false)
 autoFarmToggle2:SetValue(false)
 rbtToggle:SetValue(false)
 
-notify("BLADEX HUD cargado! Knit: " .. (knitServices and "OK" or "X"), 6)
-print("[BLADEX HUD] Cargado. LeftAlt para mostrar/ocultar.")
+notify("BLADEX HUD v6 cargado! Knit: OK", 6)
+print("[BLADEX HUD v6] Cargado. LeftAlt para mostrar/ocultar.")
