@@ -57,6 +57,32 @@ local function getActiveBases()
     return result
 end
 
+-- ── Busca dinámicamente las bases de evento en CollectZones ────────────────
+-- Detecta ZEUS y DEVIL aunque el juego cambie sus nombres o añada más bosses
+local EVENT_BOSS_NAMES = { "ZEUS", "DEVIL" }
+
+local function findEventBases()
+    local result = {}
+    local collectZones = workspace:FindFirstChild("CollectZones")
+    if not collectZones then return result end
+    for _, bossName in ipairs(EVENT_BOSS_NAMES) do
+        local zone = collectZones:FindFirstChild(bossName)
+        if zone then
+            table.insert(result, {
+                name    = bossName,
+                zone    = zone,
+                coords  = BASE_COORDS[bossName],
+                -- posición de respawn igual que base14 (zona segura)
+                respawn = Vector3.new(737, 39, -2118),
+            })
+        end
+    end
+    return result
+end
+
+local bossFarmCount = 0
+local bossFarmIndex = 1
+
 local function setModelCFrame(model, cf)
     if model.PrimaryPart then
         model:SetPrimaryPartCFrame(cf)
@@ -135,8 +161,7 @@ rf.GetReward = GetRewardRemote
 _G.AutoUpgrades         = _G.AutoUpgrades         or false
 _G.AutoContainer        = _G.AutoContainer        or false
 _G.AutoLBFarm           = _G.AutoLBFarm           or false
-_G.AutoZeus             = _G.AutoZeus             or false
-_G.AutoDevil            = _G.AutoDevil            or false
+_G.AutoBossFarm         = _G.AutoBossFarm         or false   -- Zeus + Devil unificado
 _G.AutoRebirth          = _G.AutoRebirth          or false
 _G.AutoSpeed            = _G.AutoSpeed            or false
 _G.AutoPlaceBest        = _G.AutoPlaceBest        or false
@@ -501,6 +526,123 @@ local function stopEventDualLoop()
     eventThreads = {}
 end
 
+-- ==================== LOOP UNIFICADO ZEUS + DEVIL (patrón Best Brainrots) ====================
+-- Mismo flujo que Auto Farm Best Brainrots: teleport → open block → espera modelo
+-- → mueve modelo al collectZone → hunde → espera respawn → siguiente boss
+local function loopAutoBossFarm()
+    bossFarmIndex = 1
+    bossFarmCount = 0
+
+    while _G.AutoBossFarm do
+        -- Buscar bases del evento en tiempo real (se actualiza si el evento cambia)
+        local bosses = findEventBases()
+
+        if #bosses == 0 then
+            warn("[BLADEX] No se encontraron bases ZEUS/DEVIL en CollectZones. Esperando evento...")
+            task.wait(5)
+            continue
+        end
+
+        if bossFarmIndex > #bosses then bossFarmIndex = 1 end
+        local boss = bosses[bossFarmIndex]
+
+        local character    = LP.Character or LP.CharacterAdded:Wait()
+        local root         = character:WaitForChild("HumanoidRootPart")
+        local humanoid     = character:WaitForChild("Humanoid")
+        local userId       = LP.UserId
+        local modelsFolder = workspace:WaitForChild("RunningModels")
+
+        -- Contabilizar intento
+        if boss.name == "ZEUS"  then eventStats.zeusAttempts  = eventStats.zeusAttempts  + 1 end
+        if boss.name == "DEVIL" then eventStats.devilAttempts = eventStats.devilAttempts + 1 end
+
+        -- ── 1. Teleport al bloque del boss ────────────────────────────────
+        if boss.coords then
+            root.CFrame = boss.coords.block
+            task.wait(0.3)
+            humanoid:MoveTo(boss.coords.block.Position)
+        end
+
+        -- ── 2. Abrir lucky block (con reintentos por 40% de chance) ──────
+        local opened = false
+        for attempt = 1, BOSS_CFG.MAX_RETRIES do
+            if not _G.AutoBossFarm then break end
+            local ok = pcall(function() safeInvoke(lbRF.OpenLuckyBlock, boss.name) end)
+            if ok then opened = true break end
+            task.wait(0.4)
+            if boss.coords then root.CFrame = boss.coords.block end
+        end
+
+        task.wait(BOSS_CFG.DELAYS.AFTER_OPEN)
+
+        -- ── 3. Esperar modelo propio (igual que Best Brainrots) ───────────
+        local ownedModel = nil
+        local waitStart  = tick()
+        repeat
+            task.wait(0.3)
+            for _, obj in ipairs(modelsFolder:GetChildren()) do
+                if obj:IsA("Model") and obj:GetAttribute("OwnerId") == userId then
+                    ownedModel = obj
+                    break
+                end
+            end
+        until ownedModel ~= nil or not _G.AutoBossFarm or (tick() - waitStart > 8)
+
+        if not _G.AutoBossFarm then break end
+
+        if ownedModel then
+            -- ── 4. Detectar resultado del boss ───────────────────────────
+            local detectStart = tick()
+            local result = nil
+            while tick() - detectStart < 1.0 do
+                result = detectBossSuccess(boss.name)
+                if result ~= nil then break end
+                task.wait(0.1)
+            end
+            if result == true then
+                if boss.name == "ZEUS"  then eventStats.zeusSuccesses  = eventStats.zeusSuccesses  + 1 end
+                if boss.name == "DEVIL" then eventStats.devilSuccesses = eventStats.devilSuccesses + 1 end
+                if tick() - lastBossNotify > 60 then
+                    lastBossNotify = tick()
+                    notify("✅ " .. boss.name .. " éxito! " .. bossStatsSummary(), 6)
+                end
+            end
+
+            -- ── 5. Mover modelo al final del collectZone (= Best Brainrots) ──
+            setModelCFrame(ownedModel, boss.zone.CFrame)
+            task.wait(0.7)
+
+            -- ── 6. Hundir el modelo ───────────────────────────────────────
+            if ownedModel and ownedModel.Parent == modelsFolder then
+                setModelCFrame(ownedModel, boss.zone.CFrame * CFrame.new(0, -5, 0))
+            end
+
+            -- ── 7. Esperar que desaparezca ────────────────────────────────
+            repeat
+                task.wait(0.3)
+            until not _G.AutoBossFarm or (ownedModel == nil or ownedModel.Parent ~= modelsFolder)
+            if not _G.AutoBossFarm then break end
+
+            -- ── 8. Esperar respawn ────────────────────────────────────────
+            local oldChar = LP.Character
+            repeat task.wait(0.2) until not _G.AutoBossFarm or (LP.Character ~= oldChar and LP.Character ~= nil)
+            if not _G.AutoBossFarm then break end
+
+            task.wait(0.4)
+            LP.Character:WaitForChild("HumanoidRootPart").CFrame = CFrame.new(boss.respawn)
+            task.wait(1.8)
+        else
+            -- Bloque no abrió o no aparecio modelo — pausa corta y reintento
+            task.wait(2)
+        end
+
+        bossFarmCount = bossFarmCount + 1
+        bossFarmIndex = (bossFarmIndex % #bosses) + 1
+        print(string.format("[BLADEX Boss] Run #%d en %s | %s",
+            bossFarmCount, boss.name, bossStatsSummary()))
+    end
+end
+
 -- ==================== AUTO UPGRADES ====================
 local upgradeLoopThread = nil
 local function startUpgradeLoop()
@@ -660,6 +802,7 @@ end
 local LOOP_MAP = {
     AutoContainer      = loopAutoContainer,
     AutoLBFarm         = loopAutoLBFarm,
+    AutoBossFarm       = loopAutoBossFarm,
     AutoRebirth        = loopAutoRebirth,
     AutoPlaceBest      = loopAutoPlaceBest,
     AutoBuyLuckyblock  = loopAutoBuyLuckyblock,
@@ -808,103 +951,62 @@ local autoFarmToggle2 = basesSection:AddToggle({
     end
 })
 
-basesSection:AddToggle({
-    Name    = "Auto Farm ZEUS",
-    Flag    = "auto_zeus",
+-- ── Toggle unificado Zeus & Devil (mismo display que Best Brainrots) ──────
+local bossFarmToggle = basesSection:AddToggle({
+    Name    = "⚡🔥 Auto Farm Zeus & Devil",
+    Flag    = "auto_boss_farm",
     Default = false,
     Callback = function(v)
-        _G.AutoZeus = v
         if v then
-            eventStats.zeusAttempts  = 0
-            eventStats.zeusSuccesses = 0
-            eventStats.sessionStart  = tick()
-            if _G.AutoDevil then
-                -- Ambos activos → dual loop
-                stopEventDualLoop()
-                _G.AutoLBFarm = true
-                startEventDualLoop()
-            elseif not _G.AutoLBFarm then
-                _G.AutoLBFarm = true
-                startLoop("AutoLBFarm", loopAutoLBFarm)
-                notify("⚡ Auto Farm ZEUS activo! (Solo ZEUS)", 4)
-            end
-        else
-            stopEventDualLoop()
-            if not _G.AutoDevil then
-                _G.AutoLBFarm = false
-                stopLoop("AutoLBFarm")
-                notify("Auto Farm ZEUS desactivado. Stats: " .. bossStatsSummary(), 5)
-            else
-                -- Quedó solo Devil, usar loop normal
-                if not _G.AutoLBFarm then
-                    _G.AutoLBFarm = true
-                    startLoop("AutoLBFarm", loopAutoLBFarm)
-                end
-                notify("ZEUS off. Continuando solo DEVIL.", 3)
-            end
-        end
-    end,
-})
-
-basesSection:AddToggle({
-    Name    = "Auto Farm DEVIL",
-    Flag    = "auto_devil",
-    Default = false,
-    Callback = function(v)
-        _G.AutoDevil = v
-        if v then
+            -- Resetear stats al iniciar
+            eventStats.zeusAttempts   = 0
+            eventStats.zeusSuccesses  = 0
             eventStats.devilAttempts  = 0
             eventStats.devilSuccesses = 0
             eventStats.sessionStart   = tick()
-            if _G.AutoZeus then
-                -- Ambos activos → dual loop
-                stopEventDualLoop()
-                _G.AutoLBFarm = true
-                startEventDualLoop()
-            elseif not _G.AutoLBFarm then
-                _G.AutoLBFarm = true
-                startLoop("AutoLBFarm", loopAutoLBFarm)
-                notify("🔥 Auto Farm DEVIL activo! (Solo DEVIL)", 4)
+
+            -- Verificar que existen bases del evento ANTES de arrancar
+            local bosses = findEventBases()
+            if #bosses == 0 then
+                notify("⚠ No se encontraron bases de evento (ZEUS/DEVIL). ¿Está el evento activo?", 6)
+                bossFarmToggle:SetValue(false)
+                return
             end
+
+            local names = {}
+            for _, b in ipairs(bosses) do table.insert(names, b.name) end
+            notify("⚡🔥 Boss Farm activo! Bases: " .. table.concat(names, " + "), 5)
+            toggle("AutoBossFarm", true)
         else
-            stopEventDualLoop()
-            if not _G.AutoZeus then
-                _G.AutoLBFarm = false
-                stopLoop("AutoLBFarm")
-                notify("Auto Farm DEVIL desactivado. Stats: " .. bossStatsSummary(), 5)
-            else
-                -- Quedó solo Zeus, usar loop normal
-                if not _G.AutoLBFarm then
-                    _G.AutoLBFarm = true
-                    startLoop("AutoLBFarm", loopAutoLBFarm)
-                end
-                notify("DEVIL off. Continuando solo ZEUS.", 3)
-            end
+            toggle("AutoBossFarm", false)
+            notify("Boss Farm detenido. " .. bossStatsSummary(), 6)
         end
     end,
 })
 
-basesSection:AddButton({ Name="Tp ZEUS", Callback=function()
+basesSection:AddButton({ Name="⚡ Tp Zeus",  Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if hrp then hrp.CFrame = BASE_COORDS.ZEUS.block notify("Teleportado a ZEUS.", 3) end
 end })
 
-basesSection:AddButton({ Name="Tp DEVIL", Callback=function()
+basesSection:AddButton({ Name="🔥 Tp Devil", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if hrp then hrp.CFrame = BASE_COORDS.DEVIL.block notify("Teleportado a DEVIL.", 3) end
 end })
 
-basesSection:AddButton({ Name="📊 Ver Stats del Evento", Callback=function()
-    notify(bossStatsSummary(), 8)
+basesSection:AddButton({ Name="📊 Stats del Evento", Callback=function()
+    local bosses = findEventBases()
+    local found  = #bosses > 0 and "Bases activas: "..#bosses or "⚠ Sin bases de evento"
+    notify(found .. " | " .. bossStatsSummary(), 8)
 end })
 
-basesSection:AddButton({ Name="🔄 Reset Stats del Evento", Callback=function()
+basesSection:AddButton({ Name="🔄 Reset Stats", Callback=function()
     eventStats.zeusAttempts   = 0
     eventStats.zeusSuccesses  = 0
     eventStats.devilAttempts  = 0
     eventStats.devilSuccesses = 0
     eventStats.sessionStart   = tick()
-    notify("Stats reseteados.", 3)
+    notify("Stats del evento reseteados.", 3)
 end })
 
 local baseDropValues = {}
@@ -1164,6 +1266,7 @@ end)
 
 speedToggle:SetValue(false)
 autoFarmToggle2:SetValue(false)
+bossFarmToggle:SetValue(false)
 rbtToggle:SetValue(false)
 
 notify("¡BLADEX HUD cargado! Knit: " .. (knitServices and "✓" or "✗"), 6)
