@@ -606,12 +606,12 @@ end
 local mainTab = Window:DrawTab({
     Name            = "BE A BRAINROT",
     Icon            = "crown",
-    Type            = "Single",
+    Type            = "Double",
     EnableScrolling = true,
 })
 
 -- ───────────── IZQUIERDA ─────────────
-local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="full", Minimized=true })
+local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="left", Minimized=true })
 
 local autoFarmToggle2 = basesSection:AddToggle({
     Name="Auto Farm Mejores Brainrots", Default=false,
@@ -784,15 +784,8 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
--- ==================== TAB: MISC ====================
-local miscTab = Window:DrawTab({
-    Name            = "Misc",
-    Icon            = "wrench",
-    Type            = "Double",
-    EnableScrolling = true,
-})
-
-local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+-- ==================== BE A BRAINROT: AUTO FARM ====================
+local autoFarmSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
 
 autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
     Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
@@ -815,7 +808,7 @@ autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Defa
 
 
 -- ───── MISC IZQUIERDA: MOVEMENT ─────
-local movSection = miscTab:DrawSection({ Name="Movement", Position="left", Minimized=true })
+local movSection = mainTab:DrawSection({ Name="Movement", Position="left", Minimized=true })
 
 local speedToggle = movSection:AddToggle({
     Name="Velocidad Personalizada", Default=false,
@@ -835,7 +828,7 @@ movSection:AddSlider({
 })
 
 -- ───── MISC DERECHA: RECOMPENSAS ─────
-local rewardSection = miscTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
+local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
 
 rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
     if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
