@@ -41,7 +41,6 @@ for i = 1, 14 do selectedBases[i] = false end
 
 local farmRunCount  = 0
 local farmBaseIndex = 1
-local lbBaseIndex   = 1
 
 local function getSelectedLBBases()
     local result = {}
@@ -105,17 +104,6 @@ end
 
 -- ==================== REMOTES ====================
 -- RunningService (lucky block farm)
-local lbRF = {
-    StartRun       = findRemote("RunningService",    "StartRun"),
-    StartMove      = findRemote("RunningService",    "StartMove"),
-    OpenLuckyBlock = findRemote("RunningService",    "OpenLuckyBlock"),
-    UpdateCFrame   = findRemote("RunningService",    "UpdateCFrame"),
-    EndMove        = findRemote("RunningService",    "EndMove"),
-    Collected      = findRemote("RunningService",    "Collected"),
-    Caught         = findRemote("RunningService",    "Caught"),
-    OpenBossBlock  = findRemote("LuckyBlockService", "Open"),
-}
-
 -- Servicios generales
 local rf = {
     -- Container / Brainrot
@@ -184,7 +172,6 @@ rf.GetReward = GetRewardRemote
 -- ==================== _G ====================
 _G.AutoUpgrades         = _G.AutoUpgrades         or false
 _G.AutoContainer        = _G.AutoContainer        or false
-_G.AutoLBFarm           = _G.AutoLBFarm           or false
 _G.AutoZeus             = _G.AutoZeus             or false
 _G.AutoDevil            = _G.AutoDevil            or false
 _G.AutoRebirth          = _G.AutoRebirth          or false
@@ -231,54 +218,12 @@ local BASE_COORDS = {
     base14 = { block = CFrame.new(-503.22, 36.03, -2122.19), runner = TRACK_START },
 }
 
--- ==================== CONFIG ====================
-local LB_CFG = {
-    MAX_RETRIES      = 3,
-    BLOCK_COOLDOWN   = 1.8,
-    ANTI_BUG_TIMEOUT = 6,
-    DELAYS = {
-        AFTER_TELEPORT = 0.15,
-        AFTER_OPEN     = 0.8,
-        AFTER_RUN      = 0.3,
-        CYCLE_END      = 0.8,
-        RESPAWN_WAIT   = 3.0,
-    },
-}
-
 -- ==================== HELPERS ====================
 local function safeInvoke(remote, ...)
     if not remote then return false, "Remoto nulo" end
     local ok, res = pcall(remote.InvokeServer, remote, ...)
     if not ok then warn("[safeInvoke] " .. tostring(res)) end
     return ok, res
-end
-
-local function invokeWithRetry(remote, maxRetries, ...)
-    for i = 1, (maxRetries or 3) do
-        local ok, res = safeInvoke(remote, ...)
-        if ok then return true, res end
-        task.wait(0.5)
-    end
-    return false, nil
-end
-
-local function teleportToWithConfirm(cf, maxWait)
-    maxWait = maxWait or 3
-    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    hrp.CFrame = cf
-    local start = tick()
-    while tick() - start < maxWait do
-        task.wait(0.1)
-        if hrp and hrp.Parent and (hrp.Position - cf.Position).Magnitude < 5 then return true end
-    end
-    return false
-end
-
-local function isNear(cf, threshold)
-    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false end
-    return (hrp.Position - cf.Position).Magnitude < (threshold or 5)
 end
 
 local activeThreads = {}
@@ -326,113 +271,85 @@ task.spawn(function()
     end
 end)
 
--- ==================== LUCKY BLOCK FARM ====================
-local lastBlockOpen = 0
+-- ==================== BOSS FARM (misma lógica que Brainrots) ====================
+local function runBossFarmLoop(bossName, activeFlag)
+    local bossCoords = BASE_COORDS[bossName]
+    if not bossCoords then
+        warn("[BLADEX] Coords no encontradas para " .. bossName)
+        return
+    end
 
-local function lbFarmCycle(baseName)
-    local cycleCompleted = false
-    local isBoss = (baseName == "ZEUS" or baseName == "DEVIL")
+    local teleportPos = bossCoords.block.Position
+    local movePos     = bossCoords.block.Position + Vector3.new(-4, 0, 0)
+    local respawnPos  = bossCoords.runner.Position
+    local runCount    = 0
 
-    local char = LP.Character or LP.CharacterAdded:Wait()
-    local hrp  = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return false, "Sin HRP" end
+    while _G[activeFlag] do
+        local character    = LP.Character or LP.CharacterAdded:Wait()
+        local root         = character:WaitForChild("HumanoidRootPart")
+        local humanoid     = character:WaitForChild("Humanoid")
+        local userId       = LP.UserId
+        local modelsFolder = workspace:WaitForChild("RunningModels")
+        local collectZones = workspace:WaitForChild("CollectZones")
+        local target       = collectZones:FindFirstChild(bossName)
+        local targetCF     = target and target.CFrame or bossCoords.block
 
-    local coords = BASE_COORDS[baseName] or BASE_COORDS["base14"]
+        -- 1. Teleport al bloque boss
+        root.CFrame = CFrame.new(teleportPos)
+        task.wait(0.3)
+        humanoid:MoveTo(movePos)
 
-    local antiBugTask = task.spawn(function()
-        task.wait(LB_CFG.ANTI_BUG_TIMEOUT)
-        if not cycleCompleted and _G.AutoLBFarm then
-            pcall(function()
-                local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-                if h then h.CFrame = coords.block end
-            end)
-        end
-    end)
-
-    local ok, err = pcall(function()
-        if lbRF.EndMove then safeInvoke(lbRF.EndMove) end
-        task.wait(0.2)
-
-        if not isNear(coords.block, 8) then teleportToWithConfirm(coords.block, 3) end
-
-        local waitTime = LB_CFG.BLOCK_COOLDOWN - (tick() - lastBlockOpen)
-        if waitTime > 0 then task.wait(waitTime) end
-
-        -- Boss: LuckyBlockService.Open | Normal: RunningService.OpenLuckyBlock
-        if isBoss then
-            local bossName = baseName == "ZEUS" and "ZEUS" or "DEVIL"
-            if lbRF.OpenBossBlock then
-                if not invokeWithRetry(lbRF.OpenBossBlock, LB_CFG.MAX_RETRIES, bossName) then
-                    invokeWithRetry(lbRF.OpenLuckyBlock, LB_CFG.MAX_RETRIES, bossName)
+        -- 2. Esperar modelo propio
+        local ownedModel = nil
+        local deadline   = tick() + 10
+        repeat
+            task.wait(0.3)
+            for _, obj in ipairs(modelsFolder:GetChildren()) do
+                if obj:IsA("Model") and obj:GetAttribute("OwnerId") == userId then
+                    ownedModel = obj
+                    break
                 end
-            else
-                invokeWithRetry(lbRF.OpenLuckyBlock, LB_CFG.MAX_RETRIES, bossName)
             end
-        else
-            if not invokeWithRetry(lbRF.OpenLuckyBlock, LB_CFG.MAX_RETRIES, baseName) then
-                error("Fallo OpenLuckyBlock en " .. baseName)
+        until ownedModel ~= nil or not _G[activeFlag] or tick() > deadline
+        if not _G[activeFlag] then break end
+
+        -- 3. Mover modelo a zona de colecta
+        if ownedModel then
+            setModelCFrame(ownedModel, targetCF)
+            task.wait(0.7)
+
+            if ownedModel and ownedModel.Parent == modelsFolder then
+                setModelCFrame(ownedModel, targetCF * CFrame.new(0, -5, 0))
             end
+
+            -- 4. Esperar muerte del modelo
+            repeat task.wait(0.3) until not _G[activeFlag]
+                or (ownedModel == nil or ownedModel.Parent ~= modelsFolder)
+            if not _G[activeFlag] then break end
         end
 
-        lastBlockOpen = tick()
-        task.wait(LB_CFG.DELAYS.AFTER_OPEN)
+        -- 5. Esperar respawn del personaje
+        local oldChar = LP.Character
+        repeat task.wait(0.2) until not _G[activeFlag]
+            or (LP.Character ~= oldChar and LP.Character ~= nil)
+        if not _G[activeFlag] then break end
 
-        if not isNear(coords.runner, 8) then teleportToWithConfirm(coords.runner, 3) end
-        task.wait(LB_CFG.DELAYS.AFTER_TELEPORT)
+        -- 6. Tp al spawn del boss y esperar
+        task.wait(0.4)
+        LP.Character:WaitForChild("HumanoidRootPart").CFrame = CFrame.new(respawnPos)
+        task.wait(2.1)
 
-        if lbRF.StartMove then invokeWithRetry(lbRF.StartMove, LB_CFG.MAX_RETRIES) end
-        if lbRF.StartRun  then invokeWithRetry(lbRF.StartRun,  LB_CFG.MAX_RETRIES) end
-        task.wait(LB_CFG.DELAYS.AFTER_RUN)
-
-        local currentHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-        if lbRF.UpdateCFrame and currentHrp then
-            invokeWithRetry(lbRF.UpdateCFrame, LB_CFG.MAX_RETRIES, currentHrp.CFrame)
-        end
-        task.wait(0.8)
-
-        if lbRF.EndMove then safeInvoke(lbRF.EndMove) end
-        task.wait(0.2)
-    end)
-
-    cycleCompleted = true
-    pcall(task.cancel, antiBugTask)
-    if not ok then warn("[LBFarm] Error en " .. baseName .. ": " .. tostring(err)) return false, err end
-    task.wait(LB_CFG.DELAYS.CYCLE_END)
-    return true
+        runCount = runCount + 1
+        print("[BLADEX] " .. bossName .. " Run #" .. runCount .. " completado.")
+    end
 end
 
-local function loopAutoLBFarm()
-    lbBaseIndex = 1
-    while _G.AutoLBFarm do
-        local bases = getSelectedLBBases()
-        local bossBase = nil
-        if _G.AutoZeus and _G.AutoDevil then
-            bossBase = (lbBaseIndex % 2 == 0) and "DEVIL" or "ZEUS"
-        elseif _G.AutoZeus then
-            bossBase = "ZEUS"
-        elseif _G.AutoDevil then
-            bossBase = "DEVIL"
-        end
+local function loopAutoZeusFarm()
+    runBossFarmLoop("ZEUS", "AutoZeus")
+end
 
-        if #bases == 0 and not bossBase then
-            warn("[BLADEX] No hay bases seleccionadas.")
-            task.wait(2)
-        else
-            local baseName = bossBase or bases[lbBaseIndex]
-            local ok2, err = pcall(lbFarmCycle, baseName)
-            if not ok2 then
-                warn("[LBFarm] Error: " .. tostring(err))
-                task.wait(2)
-            else
-                if not bossBase then
-                    lbBaseIndex = (lbBaseIndex % #bases) + 1
-                else
-                    lbBaseIndex = lbBaseIndex + 1
-                end
-            end
-        end
-    end
-    if lbRF.EndMove then pcall(lbRF.EndMove.InvokeServer, lbRF.EndMove) end
+local function loopAutoDevilFarm()
+    runBossFarmLoop("DEVIL", "AutoDevil")
 end
 
 -- ==================== AUTO UPGRADES ====================
@@ -629,7 +546,8 @@ end
 -- ==================== TOGGLE HELPER ====================
 local LOOP_MAP = {
     AutoContainer       = loopAutoContainer,
-    AutoLBFarm          = loopAutoLBFarm,
+    AutoZeus            = loopAutoZeusFarm,
+    AutoDevil           = loopAutoDevilFarm,
     AutoRebirth         = loopAutoRebirth,
     AutoPlaceBest       = loopAutoPlaceBest,
     AutoBuyLuckyblock   = loopAutoBuyLuckyblock,
@@ -778,32 +696,16 @@ local autoFarmToggle2 = basesSection:AddToggle({
 basesSection:AddToggle({
     Name="Auto Farm ZEUS", Flag="auto_zeus", Default=false,
     Callback=function(v)
-        _G.AutoZeus = v
-        if v and not _G.AutoLBFarm then
-            _G.AutoLBFarm = true
-            startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("Auto Farm ZEUS activo!", 4)
-        elseif not v and not _G.AutoDevil then
-            _G.AutoLBFarm = false
-            stopLoop("AutoLBFarm")
-            notify("Auto Farm ZEUS desactivado.", 3)
-        end
+        toggle("AutoZeus", v)
+        notify(v and "Auto Farm ZEUS activo!" or "Auto Farm ZEUS desactivado.", v and 4 or 3)
     end,
 })
 
 basesSection:AddToggle({
     Name="Auto Farm DEVIL", Flag="auto_devil", Default=false,
     Callback=function(v)
-        _G.AutoDevil = v
-        if v and not _G.AutoLBFarm then
-            _G.AutoLBFarm = true
-            startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("Auto Farm DEVIL activo!", 4)
-        elseif not v and not _G.AutoZeus then
-            _G.AutoLBFarm = false
-            stopLoop("AutoLBFarm")
-            notify("Auto Farm DEVIL desactivado.", 3)
-        end
+        toggle("AutoDevil", v)
+        notify(v and "Auto Farm DEVIL activo!" or "Auto Farm DEVIL desactivado.", v and 4 or 3)
     end,
 })
 
