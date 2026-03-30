@@ -606,12 +606,12 @@ end
 local mainTab = Window:DrawTab({
     Name            = "BE A BRAINROT",
     Icon            = "crown",
-    Type            = "Single",
+    Type            = "Double",
     EnableScrolling = true,
 })
 
 -- ───────────── IZQUIERDA ─────────────
-local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="full", Minimized=true })
+local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="left", Minimized=true })
 
 local autoFarmToggle2 = basesSection:AddToggle({
     Name="Auto Farm Mejores Brainrots", Default=false,
@@ -784,38 +784,9 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
--- ==================== TAB: MISC ====================
-local miscTab = Window:DrawTab({
-    Name            = "Misc",
-    Icon            = "wrench",
-    Type            = "Double",
-    EnableScrolling = true,
-})
-
-local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
-
-autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
-    Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
-
-autoFarmSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
-    Callback=function(v) toggle("AutoRebirth", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
-    Callback=function(v) toggle("AutoSpeed", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
-    Callback=function(v) toggle("AutoContainer", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
-    Callback=function(v) toggle("AutoPlaceBest", v) end })
-
-autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
-    Callback=function(v) toggle("AutoUpgrades", v) end })
-
-
-
--- ───── MISC IZQUIERDA: MOVEMENT ─────
-local movSection = miscTab:DrawSection({ Name="Movement", Position="left", Minimized=true })
+-- ───────────── DERECHA ─────────────
+-- ───── MOVEMENT ─────
+local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
 
 local speedToggle = movSection:AddToggle({
     Name="Velocidad Personalizada", Default=false,
@@ -834,8 +805,7 @@ movSection:AddSlider({
     Callback=function(value) sliderValue = value end
 })
 
--- ───── MISC DERECHA: RECOMPENSAS ─────
-local rewardSection = miscTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
+local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
 
 rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
     if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
@@ -926,6 +896,33 @@ rewardSection:AddButton({ Name="Vender Todos los Brainrots", Callback=function()
     else notify("Remoto SellAllBrainrots no encontrado.", 4) end
 end })
 
+-- ==================== TAB: MISC ====================
+local miscTab = Window:DrawTab({
+    Name = "Misc",
+    Icon = "wrench",
+    Type = "Single",
+})
+
+local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+
+autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
+    Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
+
+autoFarmSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
+    Callback=function(v) toggle("AutoRebirth", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
+    Callback=function(v) toggle("AutoSpeed", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
+    Callback=function(v) toggle("AutoContainer", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
+    Callback=function(v) toggle("AutoPlaceBest", v) end })
+
+autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
+    Callback=function(v) toggle("AutoUpgrades", v) end })
+
 -- ==================== TAB: AJUSTES ====================
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
 local settingsSection = settingsTab:DrawSection({ Name="UI Settings", Position="full" })
@@ -953,7 +950,9 @@ settingsSection:AddDropdown({ Name="Select Theme", Default="Default",
 settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 -- ==================== CONFIG + INICIO ====================
-Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
+pcall(function()
+    Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
+end)
 
 speedToggle:SetValue(false)
 autoFarmToggle2:SetValue(false)
