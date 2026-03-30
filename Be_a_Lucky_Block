@@ -579,12 +579,19 @@ local function toggle(name, val)
 end
 
 -- ==================== UI ====================
-local Notifier = nil
-if type(Compkiller.newNotify) == "function" then
-    Notifier = Compkiller.newNotify()
-elseif type(Compkiller.Notifier) == "function" then
-    Notifier = Compkiller:Notifier()
+-- Guard: esperar que Compkiller este completamente inicializado
+if not Compkiller or not Compkiller.newNotify then
+    local deadline = tick() + 5
+    repeat task.wait(0.3) until (getgenv().Compkiller and getgenv().Compkiller.newNotify) or tick() > deadline
+    Compkiller = getgenv().Compkiller
 end
+
+if not Compkiller or not Compkiller.newNotify then
+    error("[BLADEX] Compkiller no esta listo. Ejecuta el loader primero.")
+    return
+end
+
+local Notifier = Compkiller.newNotify()
 Compkiller:ChangeHighlightColor(Color3.fromRGB(195, 192, 215))
 
 local ConfigManager = Compkiller:ConfigManager({
@@ -604,11 +611,7 @@ local Window = Compkiller.new({
 Window.Minimized = true
 
 local function notify(content, duration)
-    if Notifier and Notifier.new then
-        Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
-    else
-        print("[BLADEX HUD] " .. tostring(content))
-    end
+    Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
 end
 
 -- ==================== TAB: BE A BRAINROT ====================
@@ -793,6 +796,27 @@ local rbtToggle = basesSection:AddToggle({
     end
 })
 
+-- ───── AUTO FARM (izquierda) ─────
+local autoFarmSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+
+autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
+    Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
+
+autoFarmSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
+    Callback=function(v) toggle("AutoRebirth", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
+    Callback=function(v) toggle("AutoSpeed", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
+    Callback=function(v) toggle("AutoContainer", v) end })
+
+autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
+    Callback=function(v) toggle("AutoPlaceBest", v) end })
+
+autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
+    Callback=function(v) toggle("AutoUpgrades", v) end })
+
 -- ───────────── DERECHA ─────────────
 -- ───── MOVEMENT ─────
 local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
@@ -911,26 +935,6 @@ local miscTab = Window:DrawTab({
     Icon = "wrench",
     Type = "Single",
 })
-
-local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
-
-autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
-    Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
-
-autoFarmSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
-    Callback=function(v) toggle("AutoRebirth", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
-    Callback=function(v) toggle("AutoSpeed", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=false,
-    Callback=function(v) toggle("AutoContainer", v) end })
-
-autoFarmSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
-    Callback=function(v) toggle("AutoPlaceBest", v) end })
-
-autoFarmSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
-    Callback=function(v) toggle("AutoUpgrades", v) end })
 
 -- ==================== TAB: AJUSTES ====================
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
