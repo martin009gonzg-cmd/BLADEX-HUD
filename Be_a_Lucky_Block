@@ -579,7 +579,12 @@ local function toggle(name, val)
 end
 
 -- ==================== UI ====================
-local Notifier = Compkiller.newNotify()
+local Notifier = nil
+if type(Compkiller.newNotify) == "function" then
+    Notifier = Compkiller.newNotify()
+elseif type(Compkiller.Notifier) == "function" then
+    Notifier = Compkiller:Notifier()
+end
 Compkiller:ChangeHighlightColor(Color3.fromRGB(195, 192, 215))
 
 local ConfigManager = Compkiller:ConfigManager({
@@ -599,7 +604,11 @@ local Window = Compkiller.new({
 Window.Minimized = true
 
 local function notify(content, duration)
-    Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
+    if Notifier and Notifier.new then
+        Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
+    else
+        print("[BLADEX HUD] " .. tostring(content))
+    end
 end
 
 -- ==================== TAB: BE A BRAINROT ====================
