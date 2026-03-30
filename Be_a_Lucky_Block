@@ -178,6 +178,43 @@ local LB_CFG = {
     },
 }
 
+-- ==================== BOSS CFG (evento 4h) ====================
+-- Delays reducidos para maximizar ciclos en los 4 slots del evento
+local BOSS_CFG = {
+    MAX_RETRIES      = 5,       -- más reintentos por el 40% de éxito
+    BLOCK_COOLDOWN   = 1.5,     -- cooldown más corto para bosses
+    ANTI_BUG_TIMEOUT = 6,
+    DELAYS = {
+        AFTER_TELEPORT = 0.15,  -- teleport confirm más rápido
+        AFTER_OPEN     = 0.8,   -- esperar animación de apertura
+        AFTER_RUN      = 0.3,   -- iniciar carrera más rápido
+        CYCLE_END      = 0.6,   -- menos espera entre ciclos
+        RESPAWN_WAIT   = 2.0,
+    },
+}
+
+-- Stats del evento en vivo
+local eventStats = {
+    zeusAttempts  = 0,
+    zeusSuccesses = 0,
+    devilAttempts = 0,
+    devilSuccesses= 0,
+    sessionStart  = tick(),
+}
+
+local lastBossNotify = 0
+local function bossStatsSummary()
+    local elapsed = math.floor((tick() - eventStats.sessionStart) / 60)
+    local zRate = eventStats.zeusAttempts > 0 and
+        math.floor(eventStats.zeusSuccesses / eventStats.zeusAttempts * 100) or 0
+    local dRate = eventStats.devilAttempts > 0 and
+        math.floor(eventStats.devilSuccesses / eventStats.devilAttempts * 100) or 0
+    return string.format("⏱ %dm | ZEUS %d/%d(%d%%) | DEVIL %d/%d(%d%%)",
+        elapsed,
+        eventStats.zeusSuccesses, eventStats.zeusAttempts, zRate,
+        eventStats.devilSuccesses, eventStats.devilAttempts, dRate)
+end
+
 -- ==================== HELPERS ====================
 local function safeInvoke(remote, ...)
     if not remote then return false, "Remoto nulo" end
@@ -262,7 +299,28 @@ end)
 -- ==================== LUCKY BLOCK FARM ====================
 local lastBlockOpen = 0
 
+-- ── detección de éxito del boss por BillboardGui / atributo ──────────────────
+local function detectBossSuccess(baseName)
+    -- Busca el texto "Succeeded" en BillboardGuis cerca del bloque
+    local coords = BASE_COORDS[baseName]
+    if not coords then return nil end
+    for _, v in ipairs(workspace:GetDescendants()) do
+        if v:IsA("BillboardGui") then
+            local label = v:FindFirstChildOfClass("TextLabel")
+            if label then
+                local txt = label.Text:lower()
+                if txt:find("succeed") then return true end
+                if txt:find("failed") or txt:find("fail") then return false end
+            end
+        end
+    end
+    return nil  -- sin resultado todavía
+end
+
 local function lbFarmCycle(baseName)
+    local isBoss = (baseName == "ZEUS" or baseName == "DEVIL")
+    local cfg    = isBoss and BOSS_CFG or LB_CFG
+
     local cycleCompleted = false
     local char = LP.Character or LP.CharacterAdded:Wait()
     local hrp  = char:FindFirstChild("HumanoidRootPart")
@@ -271,7 +329,7 @@ local function lbFarmCycle(baseName)
     local coords = BASE_COORDS[baseName] or BASE_COORDS["base14"]
 
     local antiBugTask = task.spawn(function()
-        task.wait(LB_CFG.ANTI_BUG_TIMEOUT)
+        task.wait(cfg.ANTI_BUG_TIMEOUT)
         if not cycleCompleted and _G.AutoLBFarm then
             pcall(function()
                 local h = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
@@ -280,48 +338,107 @@ local function lbFarmCycle(baseName)
         end
     end)
 
+    -- Contabilizar intento en stats
+    if baseName == "ZEUS"  then eventStats.zeusAttempts  = eventStats.zeusAttempts  + 1 end
+    if baseName == "DEVIL" then eventStats.devilAttempts = eventStats.devilAttempts + 1 end
+
     local ok, err = pcall(function()
         if lbRF.EndMove then safeInvoke(lbRF.EndMove) end
-        task.wait(0.2)
-        if not isNear(coords.block, 8) then teleportToWithConfirm(coords.block, 3) end
-        local waitTime = LB_CFG.BLOCK_COOLDOWN - (tick() - lastBlockOpen)
-        if waitTime > 0 then task.wait(waitTime) end
-        if not invokeWithRetry(lbRF.OpenLuckyBlock, LB_CFG.MAX_RETRIES, baseName) then
-            error("Falló OpenLuckyBlock en " .. baseName)
+        task.wait(0.15)
+
+        -- Teleport más agresivo para bosses (doble intento)
+        if not isNear(coords.block, isBoss and 5 or 8) then
+            hrp.CFrame = coords.block
+            task.wait(cfg.DELAYS.AFTER_TELEPORT)
+            if not isNear(coords.block, 5) then
+                teleportToWithConfirm(coords.block, 2)
+            end
         end
+
+        local waitTime = cfg.BLOCK_COOLDOWN - (tick() - lastBlockOpen)
+        if waitTime > 0 then task.wait(waitTime) end
+
+        -- Para bosses: hasta cfg.MAX_RETRIES intentos de OpenLuckyBlock
+        local opened = false
+        for attempt = 1, cfg.MAX_RETRIES do
+            local r_ok, r_res = safeInvoke(lbRF.OpenLuckyBlock, baseName)
+            if r_ok then opened = true break end
+            if attempt < cfg.MAX_RETRIES then
+                hrp.CFrame = coords.block   -- re-teleport si falla
+                task.wait(0.4)
+            end
+        end
+        if not opened then error("Falló OpenLuckyBlock en " .. baseName) end
         lastBlockOpen = tick()
-        task.wait(LB_CFG.DELAYS.AFTER_OPEN)
-        if not isNear(coords.runner, 8) then teleportToWithConfirm(coords.runner, 3) end
-        task.wait(LB_CFG.DELAYS.AFTER_TELEPORT)
-        if lbRF.StartMove then invokeWithRetry(lbRF.StartMove, LB_CFG.MAX_RETRIES) end
-        if lbRF.StartRun  then invokeWithRetry(lbRF.StartRun,  LB_CFG.MAX_RETRIES) end
-        task.wait(LB_CFG.DELAYS.AFTER_RUN)
+
+        task.wait(cfg.DELAYS.AFTER_OPEN)
+
+        -- Detectar éxito del boss (solo para Zeus/Devil)
+        if isBoss then
+            local result = nil
+            local detectStart = tick()
+            while tick() - detectStart < 1.5 do
+                result = detectBossSuccess(baseName)
+                if result ~= nil then break end
+                task.wait(0.1)
+            end
+            if result == true then
+                if baseName == "ZEUS"  then eventStats.zeusSuccesses  = eventStats.zeusSuccesses  + 1 end
+                if baseName == "DEVIL" then eventStats.devilSuccesses = eventStats.devilSuccesses + 1 end
+                -- Notificar éxito cada 2 minutos para no spamear
+                if tick() - lastBossNotify > 120 then
+                    lastBossNotify = tick()
+                    notify("✅ " .. baseName .. " Success! " .. bossStatsSummary(), 6)
+                end
+            end
+        end
+
+        if not isNear(coords.runner, 8) then
+            hrp.CFrame = coords.runner
+            task.wait(cfg.DELAYS.AFTER_TELEPORT)
+        end
+
+        if lbRF.StartMove then invokeWithRetry(lbRF.StartMove, cfg.MAX_RETRIES) end
+        if lbRF.StartRun  then invokeWithRetry(lbRF.StartRun,  cfg.MAX_RETRIES) end
+        task.wait(cfg.DELAYS.AFTER_RUN)
+
         local currentHrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
         if lbRF.UpdateCFrame and currentHrp then
-            invokeWithRetry(lbRF.UpdateCFrame, LB_CFG.MAX_RETRIES, currentHrp.CFrame)
+            invokeWithRetry(lbRF.UpdateCFrame, cfg.MAX_RETRIES, currentHrp.CFrame)
         end
-        task.wait(0.8)
+        task.wait(isBoss and 0.4 or 0.8)
         if lbRF.EndMove then safeInvoke(lbRF.EndMove) end
-        task.wait(0.2)
+        task.wait(0.15)
     end)
 
     cycleCompleted = true
     pcall(task.cancel, antiBugTask)
     if not ok then warn("[LBFarm] Error en " .. baseName .. ": " .. tostring(err)) return false, err end
-    task.wait(LB_CFG.DELAYS.CYCLE_END)
+    task.wait(cfg.DELAYS.CYCLE_END)
     return true
 end
 
 local function loopAutoLBFarm()
     lbBaseIndex = 1
+    local consecutiveBossErrors = 0
+
     while _G.AutoLBFarm do
         local bases = getSelectedLBBases()
-        -- Boss bases (Zeus y/o Devil) tienen prioridad si están activas
         local bossBase = nil
+
+        -- Lógica de prioridad para el evento de 4h
         if _G.AutoZeus and _G.AutoDevil then
-            -- Alternar entre Zeus y Devil
-            bossBase = (lbBaseIndex % 2 == 0) and "DEVIL" or "ZEUS"
-        elseif _G.AutoZeus then
+            -- Estrategia: preferir el boss con MENOR tasa de éxito para
+            -- que el server no lo "caliente" al mismo tiempo que todos
+            local zRate = eventStats.zeusAttempts  > 0 and (eventStats.zeusSuccesses  / eventStats.zeusAttempts)  or 0.5
+            local dRate = eventStats.devilAttempts > 0 and (eventStats.devilSuccesses / eventStats.devilAttempts) or 0.5
+            -- Alternar cada 2 ciclos si tasas similares, sino ir al más rentable
+            if math.abs(zRate - dRate) < 0.1 then
+                bossBase = (lbBaseIndex % 2 == 0) and "DEVIL" or "ZEUS"
+            else
+                bossBase = (dRate >= zRate) and "DEVIL" or "ZEUS"
+            end
+        elseif _G.AutoZeus  then
             bossBase = "ZEUS"
         elseif _G.AutoDevil then
             bossBase = "DEVIL"
@@ -331,21 +448,57 @@ local function loopAutoLBFarm()
             warn("[BLADEX] No hay bases seleccionadas.")
             task.wait(2)
         else
-            local baseName = bossBase or bases[lbBaseIndex]
-            local ok, err = pcall(lbFarmCycle, baseName)
+            local baseName = bossBase or bases[((lbBaseIndex - 1) % #bases) + 1]
+            local ok, err  = pcall(lbFarmCycle, baseName)
+
             if not ok then
                 warn("[LBFarm] Error: " .. tostring(err))
-                task.wait(2)
-            else
-                if not bossBase then
-                    lbBaseIndex = (lbBaseIndex % #bases) + 1
+                consecutiveBossErrors = consecutiveBossErrors + 1
+                -- Si falla 5 veces seguidas, pausa 5s antes de reintentar
+                if consecutiveBossErrors >= 5 then
+                    warn("[LBFarm] Demasiados errores, esperando 5s...")
+                    task.wait(5)
+                    consecutiveBossErrors = 0
                 else
-                    lbBaseIndex = lbBaseIndex + 1
+                    task.wait(1.5)
                 end
+            else
+                consecutiveBossErrors = 0
+                lbBaseIndex = lbBaseIndex + 1
             end
         end
     end
     if lbRF.EndMove then pcall(lbRF.EndMove.InvokeServer, lbRF.EndMove) end
+end
+
+-- ==================== LOOP DEDICADO AL EVENTO (Zeus + Devil simultáneo) ====================
+-- Se lanza cuando ambos bosses están activos, corre DOS threads en paralelo
+local eventThreads = {}
+local function startEventDualLoop()
+    for _, t in pairs(eventThreads) do pcall(task.cancel, t) end
+    eventThreads = {}
+
+    -- Thread ZEUS
+    eventThreads.zeus = task.spawn(function()
+        while _G.AutoZeus and _G.AutoDevil and _G.AutoLBFarm do
+            pcall(lbFarmCycle, "ZEUS")
+        end
+    end)
+
+    -- Thread DEVIL (con pequeño offset para no colisionar en el server)
+    task.wait(0.8)
+    eventThreads.devil = task.spawn(function()
+        while _G.AutoZeus and _G.AutoDevil and _G.AutoLBFarm do
+            pcall(lbFarmCycle, "DEVIL")
+        end
+    end)
+
+    notify("🔥 DUAL EVENT LOOP: ZEUS + DEVIL activos en paralelo!", 6)
+end
+
+local function stopEventDualLoop()
+    for _, t in pairs(eventThreads) do pcall(task.cancel, t) end
+    eventThreads = {}
 end
 
 -- ==================== AUTO UPGRADES ====================
@@ -661,14 +814,34 @@ basesSection:AddToggle({
     Default = false,
     Callback = function(v)
         _G.AutoZeus = v
-        if v and not _G.AutoLBFarm then
-            _G.AutoLBFarm = true
-            startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("Auto Farm ZEUS activo!", 4)
-        elseif not v and not _G.AutoDevil then
-            _G.AutoLBFarm = false
-            stopLoop("AutoLBFarm")
-            notify("Auto Farm ZEUS desactivado.", 3)
+        if v then
+            eventStats.zeusAttempts  = 0
+            eventStats.zeusSuccesses = 0
+            eventStats.sessionStart  = tick()
+            if _G.AutoDevil then
+                -- Ambos activos → dual loop
+                stopEventDualLoop()
+                _G.AutoLBFarm = true
+                startEventDualLoop()
+            elseif not _G.AutoLBFarm then
+                _G.AutoLBFarm = true
+                startLoop("AutoLBFarm", loopAutoLBFarm)
+                notify("⚡ Auto Farm ZEUS activo! (Solo ZEUS)", 4)
+            end
+        else
+            stopEventDualLoop()
+            if not _G.AutoDevil then
+                _G.AutoLBFarm = false
+                stopLoop("AutoLBFarm")
+                notify("Auto Farm ZEUS desactivado. Stats: " .. bossStatsSummary(), 5)
+            else
+                -- Quedó solo Devil, usar loop normal
+                if not _G.AutoLBFarm then
+                    _G.AutoLBFarm = true
+                    startLoop("AutoLBFarm", loopAutoLBFarm)
+                end
+                notify("ZEUS off. Continuando solo DEVIL.", 3)
+            end
         end
     end,
 })
@@ -679,14 +852,34 @@ basesSection:AddToggle({
     Default = false,
     Callback = function(v)
         _G.AutoDevil = v
-        if v and not _G.AutoLBFarm then
-            _G.AutoLBFarm = true
-            startLoop("AutoLBFarm", loopAutoLBFarm)
-            notify("Auto Farm DEVIL activo!", 4)
-        elseif not v and not _G.AutoZeus then
-            _G.AutoLBFarm = false
-            stopLoop("AutoLBFarm")
-            notify("Auto Farm DEVIL desactivado.", 3)
+        if v then
+            eventStats.devilAttempts  = 0
+            eventStats.devilSuccesses = 0
+            eventStats.sessionStart   = tick()
+            if _G.AutoZeus then
+                -- Ambos activos → dual loop
+                stopEventDualLoop()
+                _G.AutoLBFarm = true
+                startEventDualLoop()
+            elseif not _G.AutoLBFarm then
+                _G.AutoLBFarm = true
+                startLoop("AutoLBFarm", loopAutoLBFarm)
+                notify("🔥 Auto Farm DEVIL activo! (Solo DEVIL)", 4)
+            end
+        else
+            stopEventDualLoop()
+            if not _G.AutoZeus then
+                _G.AutoLBFarm = false
+                stopLoop("AutoLBFarm")
+                notify("Auto Farm DEVIL desactivado. Stats: " .. bossStatsSummary(), 5)
+            else
+                -- Quedó solo Zeus, usar loop normal
+                if not _G.AutoLBFarm then
+                    _G.AutoLBFarm = true
+                    startLoop("AutoLBFarm", loopAutoLBFarm)
+                end
+                notify("DEVIL off. Continuando solo ZEUS.", 3)
+            end
         end
     end,
 })
@@ -699,6 +892,19 @@ end })
 basesSection:AddButton({ Name="Tp DEVIL", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
     if hrp then hrp.CFrame = BASE_COORDS.DEVIL.block notify("Teleportado a DEVIL.", 3) end
+end })
+
+basesSection:AddButton({ Name="📊 Ver Stats del Evento", Callback=function()
+    notify(bossStatsSummary(), 8)
+end })
+
+basesSection:AddButton({ Name="🔄 Reset Stats del Evento", Callback=function()
+    eventStats.zeusAttempts   = 0
+    eventStats.zeusSuccesses  = 0
+    eventStats.devilAttempts  = 0
+    eventStats.devilSuccesses = 0
+    eventStats.sessionStart   = tick()
+    notify("Stats reseteados.", 3)
 end })
 
 local baseDropValues = {}
