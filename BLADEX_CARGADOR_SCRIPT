@@ -1,207 +1,184 @@
-local function _()
-    local _0 = {}
-    local _1 = game
-    local _2 = getgenv
-    local _3 = pcall
-    local _4 = warn
-    local _5 = print
-    local _6 = error
-    local _7 = task.wait
-    local _8 = tostring
-    local _9 = pairs
-    local _10 = type
+-- [[ BLADEX HUB - CARGADOR PROFESIONAL ]]
+-- Versión mejorada con caché inteligente, manejo robusto y soporte dinámico
 
-    -- ═══════════════════════════════════════════════════════════════
-    -- 💾 CACHE PRO+ CONFIG
-    -- ═══════════════════════════════════════════════════════════════
+local function _BLADEX_INIT()
+    local _game = game
+    local _getgenv = getgenv
+    local _task = task
+    local _pcall = pcall
+    local _HttpService = _game:GetService("HttpService")
 
-    local CACHE_VERSION = "v1"
+    -- ======================== CONFIGURACIÓN ========================
     local CACHE_FOLDER = "bladex_cache/"
+    local CACHE_TTL = 3600  -- 1 hora en segundos
+    local GAMES_LIST_URL = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/games.json"
 
-    if makefolder and not isfolder(CACHE_FOLDER) then
-        makefolder(CACHE_FOLDER)
-    end
+    -- Verificar capacidades del ejecutor
+    local HAS_FILE_ACCESS = type(writefile) == "function" and type(isfile) == "function" and type(readfile) == "function"
+    local HAS_HTTP = type(_game.HttpGet) == "function" or type(syn and syn.request) == "function"
 
-    -- HASH FUERTE (FNV-1a)
-    local function hash(str)
-        local h = 2166136261
-        for i = 1, #str do
-            h = bit32.bxor(h, string.byte(str, i))
-            h = (h * 16777619) % 2^32
+    -- ======================== NOTIFICACIONES ========================
+    local function notify(title, msg, duration)
+        duration = duration or 5
+        local lib = _getgenv().Compkiller
+        if lib and lib.newNotify then
+            local ok, err = _pcall(lib.newNotify, lib, title, msg, duration)
+            if not ok then
+                print(string.format("[BLADEX] %s: %s", title, msg))
+            end
+        else
+            print(string.format("[BLADEX] %s: %s", title, msg))
         end
-        return h
     end
 
-    local HASHES = {
-        -- ["URL"] = HASH
-    }
-
-    local function getCachePath(url)
-        return CACHE_FOLDER .. CACHE_VERSION .. "_" .. tostring(#url) .. "_" .. tostring(hash(url)) .. ".txt"
+    -- ======================== DESCARGA CON CACHÉ ========================
+    local function getCacheFileName(url)
+        -- Genera un nombre de archivo seguro basado en la URL
+        local hash = _HttpService:JSONEncode({url = url}):sub(2, -2)  -- simple, o usar string hash
+        local safe = url:gsub("[%p%c]", "_"):sub(1, 40)
+        return CACHE_FOLDER .. "bladex_" .. safe .. "_" .. (#hash > 20 and hash:sub(1, 20) or hash) .. ".txt"
     end
 
-    local function clearOldCache()
-        if listfiles then
-            for _, file in ipairs(listfiles(CACHE_FOLDER)) do
-                if not string.find(file, CACHE_VERSION) then
-                    pcall(delfile, file)
+    local function secureDownload(url, ttl)
+        if url == "" then return nil end
+        ttl = ttl or CACHE_TTL
+
+        local fileName = getCacheFileName(url)
+        local now = os.time()
+
+        -- Intenta usar caché si existe y es reciente
+        if HAS_FILE_ACCESS and isfile(fileName) then
+            local ok, info = _pcall(function() return getfileinfo(fileName) end)
+            if ok and info and info.size > 0 then
+                local modified = info.modified or 0
+                if (now - modified) < ttl then
+                    local cached = readfile(fileName)
+                    if cached and #cached > 50 then
+                        return cached
+                    end
                 end
             end
         end
+
+        -- Descarga con reintentos
+        for attempt = 1, 3 do
+            local success, result
+            if _game.HttpGet then
+                success, result = _pcall(function() return _game:HttpGet(url) end)
+            elseif syn and syn.request then
+                success, result = _pcall(function()
+                    local res = syn.request({Url = url, Method = "GET"})
+                    return res and res.Body
+                end)
+            else
+                notify("Error", "No se encontró método HTTP disponible")
+                return nil
+            end
+
+            if success and result and #result > 50 then
+                -- Verificación básica de integridad
+                if result:match("^[%s]*%-%-%[%[") or result:match("loadstring") or result:match("return") then
+                    if HAS_FILE_ACCESS then
+                        _pcall(writefile, fileName, result)
+                    end
+                    return result
+                end
+            end
+            _task.wait(2)
+        end
+
+        -- Fallback a caché incluso si expiró
+        if HAS_FILE_ACCESS and isfile(fileName) then
+            return readfile(fileName)
+        end
+        return nil
     end
 
-    clearOldCache()
+    -- ======================== CARGA DINÁMICA DE JUEGOS ========================
+    local function loadGamesList()
+        local jsonData = secureDownload(GAMES_LIST_URL, 86400)  -- TTL 1 día
+        if jsonData then
+            local success, data = _pcall(_HttpService.JSONDecode, _HttpService, jsonData)
+            if success and type(data) == "table" then
+                return data
+            end
+        end
+        return nil
+    end
 
-    -- ═══════════════════════════════════════════════════════════════
-    -- CONFIGURACION DE JUEGOS
-    -- ═══════════════════════════════════════════════════════════════
-
-    _0[99435399946069] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", "[NEW] Reel a Brainrot! [GAME]"}
-    _0[124473577469410] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block", "Be a Lucky Block"}
-    _0[106772177198260] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", "Reel a Brainrot"}
-
-    -- ═══════════════════════════════════════════════════════════════
-
-    local LIBRARY_URLS = {
-        "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA",
-        "https://pastebin.com/raw/ufVie1pF"
+    -- ======================== BASE DE DATOS LOCAL (FALLBACK) ========================
+    local DEFAULT_GAMES = {
+        [106772177198260] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", name = "Brainrot Simulator"},
+        [124473577469410] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block", name = "Lucky Block Sim"},
+        [99435399946069]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", name = "Reel a Brainrot [NEW]"},
     }
 
-    local _b = _1.PlaceId
-    local _c = _0[_b]
+    -- ======================== BLOQUEO DE EJECUCIÓN MÚLTIPLE ========================
+    if _getgenv()._BLADEX_LOADING then
+        notify("Advertencia", "Ya hay una instancia cargando", 3)
+        return
+    end
+    _getgenv()._BLADEX_LOADING = true
 
-    if not _c then
-        _4("[BLADEX] Juego no soportado: " .. _8(_b))
-        for _d, _e in _9(_0) do
-            _5("  -> " .. _8(_d) .. " - " .. _e[2])
-        end
+    -- ======================== OBTENER INFORMACIÓN DEL JUEGO ========================
+    local currentId = _game.PlaceId
+    local gamesDB = loadGamesList() or DEFAULT_GAMES
+    local gameData = gamesDB[currentId]
+
+    if not gameData then
+        warn(string.format("[BLADEX] ID %s no configurado", tostring(currentId)))
+        notify("Error", "Juego no soportado", 4)
+        _getgenv()._BLADEX_LOADING = nil
         return
     end
 
-    local _f = _c[1]
-    local _g = _c[2]
-
-    _5("[BLADEX] Juego detectado: " .. _g)
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- DOWNLOAD PRO+ (CACHE + HASH + REINTENTOS)
-    -- ═══════════════════════════════════════════════════════════════
-
-    local function downloadUrl(url, maxAttempts, baseDelay)
-        local path = getCachePath(url)
-
-        -- CACHE
-        if isfile and isfile(path) then
-            local ok, data = _3(readfile, path)
-            if ok and data and #data > 10 then
-                local h = hash(data)
-
-                if HASHES[url] then
-                    if h == HASHES[url] then
-                        _5("[BLADEX] Cache válido ✔")
-                        return data
-                    else
-                        _4("[BLADEX] Cache corrupto, eliminando...")
-                        pcall(delfile, path)
-                    end
+    -- ======================== CARGAR LIBRERÍA (SI NO EXISTE) ========================
+    if not _getgenv().Compkiller then
+        local libUrl = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA"
+        local libCode = secureDownload(libUrl, 7200)  -- 2 horas TTL
+        if libCode then
+            local func, err = loadstring(libCode)
+            if func then
+                local success, obj = _pcall(func)
+                if success then
+                    _getgenv().Compkiller = obj
                 else
-                    _5("[BLADEX] Cache usado ⚡")
-                    return data
+                    notify("Error", "Fallo al inicializar librería: " .. tostring(obj))
                 end
+            else
+                notify("Error", "Librería corrupta: " .. tostring(err))
             end
+        else
+            notify("Error", "No se pudo descargar la librería")
         end
+    end
 
-        -- DESCARGA CON REINTENTOS
-        maxAttempts = maxAttempts or 3
-        baseDelay = baseDelay or 2
+    -- ======================== CARGAR SCRIPT PRINCIPAL ========================
+    notify("BLADEX HUB", "Iniciando " .. gameData.name, 3)
+    local scriptCode = secureDownload(gameData.url, 3600)
 
-        for attempt = 1, maxAttempts do
-            _5("[BLADEX] Descargando ("..attempt.."/"..maxAttempts..")")
-
-            local success, result = _3(function()
-                return _1:HttpGet(url)
-            end)
-
-            if success and result and #result > 10 then
-                local h = hash(result)
-
-                if HASHES[url] and HASHES[url] ~= h then
-                    _4("[BLADEX] Hash inválido 🚨")
-                    return nil
-                end
-
-                if writefile then
-                    pcall(writefile, path, result)
-                end
-
-                return result
+    if scriptCode then
+        local mainFunc, err = loadstring(scriptCode)
+        if mainFunc then
+            local success, execErr = _pcall(mainFunc)
+            if success then
+                notify("Éxito", "Cargado correctamente ✔", 4)
+            else
+                notify("Error", "Error en ejecución: " .. tostring(execErr), 6)
             end
-
-            _4("[BLADEX] Fallo descarga")
-
-            if attempt < maxAttempts then
-                _7(baseDelay * (2 ^ (attempt - 1)))
-            end
+        else
+            notify("Error", "Script inválido: " .. tostring(err), 6)
         end
-
-        return nil
-    end
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- CARGAR LIBRERIA
-    -- ═══════════════════════════════════════════════════════════════
-
-    local function loadLibrary()
-        for _, url in ipairs(LIBRARY_URLS) do
-            local code = downloadUrl(url, 2, 2)
-            if not code then continue end
-
-            local func = loadstring(code)
-            if not func then continue end
-
-            local ok, lib = _3(func)
-            if ok and _10(lib) == "table" then
-                return lib
-            end
-        end
-        return nil
-    end
-
-    local libraryObj = loadLibrary()
-    if not libraryObj then
-        _6("[BLADEX] No se pudo cargar libreria")
-    end
-
-    _2().Compkiller = libraryObj
-
-    -- ESPERA
-    local t0 = tick()
-    repeat
-        _7(0.3)
-    until (_2().Compkiller and _2().Compkiller.newNotify) or tick() - t0 > 10
-
-    -- ═══════════════════════════════════════════════════════════════
-    -- SCRIPT DEL JUEGO
-    -- ═══════════════════════════════════════════════════════════════
-
-    local gameScript = downloadUrl(_f, 3, 2)
-    if not gameScript then
-        _6("[BLADEX] Fallo descarga script")
-    end
-
-    local gameFunc = loadstring(gameScript)
-    if not gameFunc then
-        _6("[BLADEX] Error compilando")
-    end
-
-    _5("[BLADEX] Ejecutando " .. _g)
-
-    local execSuccess, execErr = _3(gameFunc)
-    if not execSuccess then
-        _4("[BLADEX] Error: " .. _8(execErr))
     else
-        _5("[BLADEX] BLADEX CARGADO ✔")
+        notify("Error", "No se pudo descargar el script del juego", 5)
     end
+
+    -- ======================== LIMPIEZA ========================
+    _getgenv()._BLADEX_LOADING = nil
+    -- Liberar variables grandes
+    gamesDB = nil
+    gameData = nil
 end
 
-_()
+-- Ejecutar en un hilo separado para no bloquear (opcional)
+task.spawn(_BLADEX_INIT)
