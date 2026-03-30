@@ -95,15 +95,17 @@ local function _()
         _2().Compkiller = _o
     end
     
-    local _p = _2().Compkiller
-    if not _p then
-        _5("[BLADEX] Esperando inicializacion...")
-        _7(2)
+    -- Esperar hasta 5s a que Compkiller quede disponible con newNotify
+    local _p = nil
+    for _wait = 1, 10 do
         _p = _2().Compkiller
+        if _p and type(_p) == "table" and _p.newNotify then break end
+        _5("[BLADEX] Esperando Compkiller... intento " .. _wait)
+        _7(0.5)
     end
     
-    if not _p then
-        _6("[BLADEX] No se encontro Compkiller")
+    if not _p or not _p.newNotify then
+        _6("[BLADEX] No se encontro Compkiller o newNotify no existe")
         return
     end
     
