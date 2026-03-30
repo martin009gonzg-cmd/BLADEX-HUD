@@ -883,7 +883,7 @@ local rbtToggle = basesSection:AddToggle({
 -- ==================== TAB: MISC ====================
 local miscTab = Window:DrawTab({
     Name = "Misc",
-    Icon = "tool",
+    Icon = "wrench",
     Type = "Single",
 })
 
