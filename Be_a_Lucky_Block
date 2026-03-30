@@ -192,14 +192,16 @@ _G.AutoQuestClaim       = _G.AutoQuestClaim       or false
 local TRACK_START = CFrame.new(709.27, 36.79, -2121.97)
 
 local BASE_COORDS = {
-    -- Boss: ZEUS confirmado en scan. DEVIL no activo actualmente.
+    -- Boss: ZEUS verificado con SimpleSpy. DEVIL no activo actualmente.
     ZEUS  = {
-        block  = CFrame.new(354.68, 99.88, -2121.59),   -- Workspace.Bases.ZEUS.Spawner
-        runner = CFrame.new(380.95, 99.82, -2097.84),   -- CHOSEN_PLATFORM.SPAWN_PLACEHOLDER
+        block    = CFrame.new(354.68,  99.88,  -2121.59),  -- Spawner ZEUS (confirmado)
+        runner   = CFrame.new(415.77,  109.71, -2125.65),  -- CollectZone ZEUS (confirmado)
+        detector = CFrame.new(343.39,  111.32, -2121.72),  -- BossTouchDetector ZEUS
     },
     DEVIL = {
-        block  = CFrame.new(354.68, 99.88, -2121.59),   -- placeholder (no activo aun)
-        runner = CFrame.new(380.95, 99.82, -2097.84),
+        block    = CFrame.new(354.68,  99.88,  -2121.59),  -- placeholder (DEVIL no activo)
+        runner   = CFrame.new(415.77,  109.71, -2125.65),
+        detector = CFrame.new(343.39,  111.32, -2121.72),
     },
     -- Bases normales: posiciones reales de Workspace.Bases.baseN.Spawner
     base1  = { block = CFrame.new(640.31, 36.03, -2026.69), runner = TRACK_START },
@@ -789,7 +791,7 @@ local miscTab = Window:DrawTab({
     Type = "Single",
 })
 
-local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
+local autoFarmSection = miscTab:DrawSection({ Name="Auto Farm", Position="full", Minimized=true })
 
 autoFarmSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
     Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
@@ -950,9 +952,7 @@ settingsSection:AddDropdown({ Name="Select Theme", Default="Default",
 settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 -- ==================== CONFIG + INICIO ====================
-pcall(function()
-    Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
-end)
+Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
 
 speedToggle:SetValue(false)
 autoFarmToggle2:SetValue(false)
