@@ -906,17 +906,7 @@ afSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Defa
 afSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
     Callback=function(v) toggle("AutoUpgrades", v) end })
 
-afSection:AddToggle({ Name="Auto Vender Brainrots", Flag="auto_sell", Default=false,
-    Callback=function(v) toggle("AutoSellBrainrots", v) end })
 
-afSection:AddToggle({ Name="Auto Girar Ruleta", Flag="auto_spin", Default=false,
-    Callback=function(v) toggle("AutoSpinWheel", v) end })
-
-afSection:AddToggle({ Name="Auto Recompensa Diaria", Flag="auto_daily", Default=false,
-    Callback=function(v) toggle("AutoDailyReward", v) end })
-
-afSection:AddToggle({ Name="Auto Reclamar Mision", Flag="auto_quest", Default=false,
-    Callback=function(v) toggle("AutoQuestClaim", v) end })
 
 -- ───── MOVEMENT ─────
 local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
@@ -940,6 +930,59 @@ movSection:AddSlider({
 
 -- ───────────── DERECHA ─────────────
 local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
+
+rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
+    if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
+    for _, code in ipairs(codes) do pcall(function() rf.RedeemCode:InvokeServer(code) end) task.wait(1) end
+    pcall(function() rf.RedeemCode:InvokeServer("DEVIL") end)
+    notify("Codigos canjeados.", 4)
+end })
+
+rewardSection:AddButton({ Name="Reclamar Bloque Espiritual", Callback=function()
+    if not rf.GetReward then notify("Remoto GetReward no encontrado.", 5) return end
+    local ok, result = safeInvoke(rf.GetReward)
+    notify(ok and "Reclamo enviado!" or "Error: " .. tostring(result), 5)
+end })
+
+rewardSection:AddButton({ Name="Comprar Mejor Luckyblock", Callback=function()
+    doBuyBestLuckyblock()
+end })
+
+rewardSection:AddButton({ Name="Girar Ruleta", Callback=function()
+    if rf.SpinAll then safeInvoke(rf.SpinAll) notify("Ruleta girada.", 3)
+    elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) notify("Ruleta girada.", 3)
+    else notify("Remoto SpinWheel no encontrado.", 4) end
+end })
+
+rewardSection:AddButton({ Name="Reclamar Tienda Gratis", Callback=function()
+    if rf.FreeShopClaim then safeInvoke(rf.FreeShopClaim) notify("Tienda gratis reclamada.", 3)
+    else notify("Remoto FreeShopClaim no encontrado.", 4) end
+end })
+
+rewardSection:AddButton({ Name="Reclamar Pase de Evento", Callback=function()
+    local claimed = doClaimEventPass()
+    if claimed > 0 then notify("Recompensas reclamadas: " .. claimed, 4)
+    else notify("Sin recompensas disponibles o GUI no encontrada.", 5) end
+end })
+
+rewardSection:AddButton({ Name="Reclamar Recompensas Diarias", Callback=function()
+    if rf.DailyClaimFirst then safeInvoke(rf.DailyClaimFirst) end
+    if rf.DailyClaim then safeInvoke(rf.DailyClaim) end
+    if rf.DailyClaimVIP then safeInvoke(rf.DailyClaimVIP) end
+    notify("Recompensas diarias reclamadas.", 3)
+end })
+
+rewardSection:AddButton({ Name="Reclamar Recompensas de Tiempo", Callback=function()
+    local claimGift = findRemote("PlaytimeRewardService", "ClaimGift")
+    if not claimGift then notify("Remoto ClaimGift no encontrado.", 5) return end
+    for reward = 1, 12 do pcall(function() claimGift:InvokeServer(reward) end) task.wait(0.25) end
+    notify("Recompensas de tiempo reclamadas.", 4)
+end })
+
+rewardSection:AddButton({ Name="Reclamar Mision", Callback=function()
+    if rf.QuestClaim then safeInvoke(rf.QuestClaim) notify("Mision reclamada.", 3)
+    else notify("Remoto QuestClaim no encontrado.", 4) end
+end })
 
 rewardSection:AddButton({ Name="Recoger Todos los Brainrots", Callback=function()
     local username = LP.Name
@@ -975,70 +1018,6 @@ end })
 rewardSection:AddButton({ Name="Vender Todos los Brainrots", Callback=function()
     if rf.SellAllBrainrots then safeInvoke(rf.SellAllBrainrots) notify("Brainrots vendidos.", 3)
     else notify("Remoto SellAllBrainrots no encontrado.", 4) end
-end })
-
-rewardSection:AddButton({ Name="Soltar Todo", Callback=function()
-    if rf.DropAll then safeInvoke(rf.DropAll) notify("DropAll enviado.", 3)
-    else notify("Remoto DropAll no encontrado.", 4) end
-end })
-
-rewardSection:AddButton({ Name="Reclamar Bloque Espiritual", Callback=function()
-    if not rf.GetReward then notify("Remoto GetReward no encontrado.", 5) return end
-    local ok, result = safeInvoke(rf.GetReward)
-    notify(ok and "Reclamo enviado!" or "Error: " .. tostring(result), 5)
-end })
-
-rewardSection:AddButton({ Name="Reclamar Evento Base", Callback=function()
-    if rf.ClaimBaseEvent then safeInvoke(rf.ClaimBaseEvent) notify("Evento base reclamado.", 3)
-    elseif rf.ClaimLuminous then safeInvoke(rf.ClaimLuminous) notify("Recompensa luminosa reclamada.", 3)
-    else notify("Remoto ClaimReward no encontrado.", 4) end
-end })
-
-rewardSection:AddButton({ Name="Reclamar Tienda Gratis", Callback=function()
-    if rf.FreeShopClaim then safeInvoke(rf.FreeShopClaim) notify("Tienda gratis reclamada.", 3)
-    else notify("Remoto FreeShopClaim no encontrado.", 4) end
-end })
-
-rewardSection:AddButton({ Name="Reclamar Recompensas Diarias", Callback=function()
-    if rf.DailyClaimFirst then safeInvoke(rf.DailyClaimFirst) end
-    if rf.DailyClaim then safeInvoke(rf.DailyClaim) end
-    if rf.DailyClaimVIP then safeInvoke(rf.DailyClaimVIP) end
-    notify("Recompensas diarias reclamadas.", 3)
-end })
-
-rewardSection:AddButton({ Name="Girar Ruleta", Callback=function()
-    if rf.SpinAll then safeInvoke(rf.SpinAll) notify("Ruleta girada.", 3)
-    elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) notify("Ruleta girada.", 3)
-    else notify("Remoto SpinWheel no encontrado.", 4) end
-end })
-
-rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
-    if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
-    for _, code in ipairs(codes) do pcall(function() rf.RedeemCode:InvokeServer(code) end) task.wait(1) end
-    pcall(function() rf.RedeemCode:InvokeServer("DEVIL") end)
-    notify("Codigos canjeados.", 4)
-end })
-
-rewardSection:AddButton({ Name="Comprar Mejor Luckyblock", Callback=function()
-    doBuyBestLuckyblock()
-end })
-
-rewardSection:AddButton({ Name="Reclamar Pase de Evento", Callback=function()
-    local claimed = doClaimEventPass()
-    if claimed > 0 then notify("Recompensas reclamadas: " .. claimed, 4)
-    else notify("Sin recompensas disponibles o GUI no encontrada.", 5) end
-end })
-
-rewardSection:AddButton({ Name="Reclamar Recompensas de Tiempo", Callback=function()
-    local claimGift = findRemote("PlaytimeRewardService", "ClaimGift")
-    if not claimGift then notify("Remoto ClaimGift no encontrado.", 5) return end
-    for reward = 1, 12 do pcall(function() claimGift:InvokeServer(reward) end) task.wait(0.25) end
-    notify("Recompensas de tiempo reclamadas.", 4)
-end })
-
-rewardSection:AddButton({ Name="Reclamar Mision", Callback=function()
-    if rf.QuestClaim then safeInvoke(rf.QuestClaim) notify("Mision reclamada.", 3)
-    else notify("Remoto QuestClaim no encontrado.", 4) end
 end })
 
 -- ==================== TAB: AJUSTES ====================
