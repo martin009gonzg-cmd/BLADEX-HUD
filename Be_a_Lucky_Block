@@ -513,72 +513,78 @@ local function loopAutoQuestClaim()
     end
 end
 
-local function loopAutoBuyLuckyblock()
-    local buy = findRemote("SkinService", "BuySkin")
-    while _G.AutoBuyLuckyblock do
-        if buy then
-            local gui = LP.PlayerGui:FindFirstChild("Windows")
-            local scrollingFrame = gui and gui:FindFirstChild("PickaxeShop") and
-                gui.PickaxeShop:FindFirstChild("ShopContainer") and
-                gui.PickaxeShop.ShopContainer:FindFirstChild("ScrollingFrame")
-            if scrollingFrame then
-                local cash = LP.leaderstats.Cash.Value
-                local bestSkin, bestPrice = nil, 0
-                for _, name in ipairs(skins) do
-                    local item = scrollingFrame:FindFirstChild(name)
-                    if item then
-                        local buyButton = item:FindFirstChild("Main") and
-                            item.Main:FindFirstChild("Buy") and
-                            item.Main.Buy:FindFirstChild("BuyButton")
-                        if buyButton and buyButton.Visible then
-                            local cashLabel = buyButton:FindFirstChild("Cash")
-                            if cashLabel then
-                                local price = parseCash(cashLabel.Text)
-                                if cash >= price and price > bestPrice then
-                                    bestSkin = name bestPrice = price
-                                end
-                            end
-                        end
+-- ==================== HELPERS COMPARTIDOS ====================
+local function doBuyBestLuckyblock()
+    if not rf.BuySkin then notify("Remoto BuySkin no encontrado.", 5) return end
+    local gui = LP.PlayerGui:FindFirstChild("Windows")
+    local scrollingFrame = gui and gui:FindFirstChild("PickaxeShop") and
+        gui.PickaxeShop:FindFirstChild("ShopContainer") and
+        gui.PickaxeShop.ShopContainer:FindFirstChild("ScrollingFrame")
+    if not scrollingFrame then return end
+    local cash = LP.leaderstats.Cash.Value
+    local bestSkin, bestPrice = nil, 0
+    for _, name in ipairs(skins) do
+        local item = scrollingFrame:FindFirstChild(name)
+        if item then
+            local buyButton = item:FindFirstChild("Main") and
+                item.Main:FindFirstChild("Buy") and
+                item.Main.Buy:FindFirstChild("BuyButton")
+            if buyButton and buyButton.Visible then
+                local cashLabel = buyButton:FindFirstChild("Cash")
+                if cashLabel then
+                    local price = parseCash(cashLabel.Text)
+                    if cash >= price and price > bestPrice then
+                        bestSkin = name bestPrice = price
                     end
-                end
-                if bestSkin then
-                    pcall(function() buy:InvokeServer(bestSkin) end)
-                    notify("Auto comprado: " .. bestSkin, 3)
                 end
             end
         end
+    end
+    if bestSkin then
+        pcall(function() rf.BuySkin:InvokeServer(bestSkin) end)
+        notify("Comprado: " .. bestSkin, 3)
+    else
+        notify("No hay skin disponible.", 4)
+    end
+end
+
+local function doClaimEventPass()
+    if not rf.ClaimPassReward then return 0 end
+    local ok, gui = pcall(function()
+        return LP:WaitForChild("PlayerGui"):WaitForChild("Windows")
+            :WaitForChild("Event"):WaitForChild("Frame"):WaitForChild("Frame")
+            :WaitForChild("Windows"):WaitForChild("Pass"):WaitForChild("Main")
+            :WaitForChild("ScrollingFrame")
+    end)
+    if not ok or not gui then return 0 end
+    local claimed = 0
+    for i = 1, 10 do
+        local item = gui:FindFirstChild(tostring(i))
+        if item and item:FindFirstChild("Frame") and item.Frame:FindFirstChild("Free") then
+            local free = item.Frame.Free
+            local locked    = free:FindFirstChild("Locked")
+            local claimedEl = free:FindFirstChild("Claimed")
+            if locked and not locked.Visible and not (claimedEl and claimedEl.Visible) then
+                pcall(function() rf.ClaimPassReward:InvokeServer("Free", i) end)
+                claimed = claimed + 1
+                task.wait(0.1)
+            end
+        end
+    end
+    return claimed
+end
+
+local function loopAutoBuyLuckyblock()
+    while _G.AutoBuyLuckyblock do
+        doBuyBestLuckyblock()
         task.wait(5)
     end
 end
 
 local function loopAutoClaimEventPass()
-    local claim = findRemote("SeasonPassService", "ClaimPassReward")
     while _G.AutoClaimEventPass do
-        if claim then
-            local ok, gui = pcall(function()
-                return LP:WaitForChild("PlayerGui"):WaitForChild("Windows")
-                    :WaitForChild("Event"):WaitForChild("Frame"):WaitForChild("Frame")
-                    :WaitForChild("Windows"):WaitForChild("Pass"):WaitForChild("Main")
-                    :WaitForChild("ScrollingFrame")
-            end)
-            if ok and gui then
-                local claimed = 0
-                for i = 1, 10 do
-                    local item = gui:FindFirstChild(tostring(i))
-                    if item and item:FindFirstChild("Frame") and item.Frame:FindFirstChild("Free") then
-                        local free = item.Frame.Free
-                        local locked    = free:FindFirstChild("Locked")
-                        local claimedEl = free:FindFirstChild("Claimed")
-                        if locked and not locked.Visible and not (claimedEl and claimedEl.Visible) then
-                            pcall(function() claim:InvokeServer("Free", i) end)
-                            claimed = claimed + 1
-                            task.wait(0.1)
-                        end
-                    end
-                end
-                if claimed > 0 then notify("Event Pass reclamadas: " .. claimed, 3) end
-            end
-        end
+        local claimed = doClaimEventPass()
+        if claimed > 0 then notify("Pase de evento reclamado: " .. claimed, 3) end
         task.wait(30)
     end
 end
@@ -688,7 +694,7 @@ local mainTab = Window:DrawTab({
 local basesSection = mainTab:DrawSection({ Name="Farm Brainrots", Position="left", Minimized=true })
 
 local autoFarmToggle2 = basesSection:AddToggle({
-    Name="Auto Farm Best Brainrots", Default=false,
+    Name="Auto Farm Mejores Brainrots", Default=false,
     Callback=function(state)
         runningFarm = state
         if state then
@@ -801,14 +807,9 @@ basesSection:AddToggle({
     end,
 })
 
-basesSection:AddButton({ Name="Tp ZEUS", Callback=function()
+basesSection:AddButton({ Name="Tp Inicio de Pista", Callback=function()
     local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then hrp.CFrame = BASE_COORDS.ZEUS.block notify("Teleportado a ZEUS.", 3) end
-end })
-
-basesSection:AddButton({ Name="Tp TrackStart", Callback=function()
-    local hrp = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-    if hrp then hrp.CFrame = TRACK_START notify("Teleportado a TrackStart.", 3) end
+    if hrp then hrp.CFrame = TRACK_START notify("Teleportado al inicio de pista.", 3) end
 end })
 
 local baseDropValues = {}
@@ -826,7 +827,7 @@ basesSection:AddDropdown({
     end
 })
 
-basesSection:AddButton({ Name="Teleport to End", Callback=function()
+basesSection:AddButton({ Name="Teleportar al Final", Callback=function()
     local ok, err = pcall(function()
         local modelsFolder = workspace:WaitForChild("RunningModels", 5)
         if not modelsFolder then notify("RunningModels no encontrado.", 4) return end
@@ -870,7 +871,7 @@ end })
 
 local folder2 = workspace:WaitForChild("BossTouchDetectors")
 local rbtToggle = basesSection:AddToggle({
-    Name="Remove Bad Boss Touch Detectors", Default=false,
+    Name="Quitar Detectores de Jefe", Default=false,
     Callback=function(state)
         if state then
             storedParts = {}
@@ -887,10 +888,10 @@ local rbtToggle = basesSection:AddToggle({
 -- ───── AUTO FARM ─────
 local afSection = mainTab:DrawSection({ Name="Auto Farm", Position="left", Minimized=true })
 
-afSection:AddToggle({ Name="Auto Cash", Flag="auto_cash", Default=false,
+afSection:AddToggle({ Name="Auto Efectivo", Flag="auto_cash", Default=false,
     Callback=function(v) _G.AutoCash=v if v then startCashLoop() else cashRunning=false end end })
 
-afSection:AddToggle({ Name="Auto Rebirth", Flag="auto_rebirth", Default=false,
+afSection:AddToggle({ Name="Auto Renacimiento", Flag="auto_rebirth", Default=false,
     Callback=function(v) toggle("AutoRebirth", v) end })
 
 afSection:AddToggle({ Name="Auto Comprar Velocidad", Flag="auto_speed", Default=false,
@@ -902,26 +903,26 @@ afSection:AddToggle({ Name="Auto Mejorar Base", Flag="auto_container", Default=f
 afSection:AddToggle({ Name="Auto Colocar Brainrots", Flag="auto_placebest", Default=false,
     Callback=function(v) toggle("AutoPlaceBest", v) end })
 
-afSection:AddToggle({ Name="Upgrade Brainrots", Flag="auto_upgrades", Default=false,
+afSection:AddToggle({ Name="Mejorar Brainrots", Flag="auto_upgrades", Default=false,
     Callback=function(v) toggle("AutoUpgrades", v) end })
 
-afSection:AddToggle({ Name="Auto Sell All Brainrots", Flag="auto_sell", Default=false,
+afSection:AddToggle({ Name="Auto Vender Brainrots", Flag="auto_sell", Default=false,
     Callback=function(v) toggle("AutoSellBrainrots", v) end })
 
-afSection:AddToggle({ Name="Auto Spin Wheel", Flag="auto_spin", Default=false,
+afSection:AddToggle({ Name="Auto Girar Ruleta", Flag="auto_spin", Default=false,
     Callback=function(v) toggle("AutoSpinWheel", v) end })
 
-afSection:AddToggle({ Name="Auto Daily Reward", Flag="auto_daily", Default=false,
+afSection:AddToggle({ Name="Auto Recompensa Diaria", Flag="auto_daily", Default=false,
     Callback=function(v) toggle("AutoDailyReward", v) end })
 
-afSection:AddToggle({ Name="Auto Quest Claim", Flag="auto_quest", Default=false,
+afSection:AddToggle({ Name="Auto Reclamar Mision", Flag="auto_quest", Default=false,
     Callback=function(v) toggle("AutoQuestClaim", v) end })
 
 -- ───── MOVEMENT ─────
 local movSection = mainTab:DrawSection({ Name="Movement", Position="right", Minimized=true })
 
 local speedToggle = movSection:AddToggle({
-    Name="Custom Lucky Block Speed", Default=false,
+    Name="Velocidad Personalizada", Default=false,
     Callback=function(state)
         runningSpeed = state
         if not state then
@@ -933,14 +934,14 @@ local speedToggle = movSection:AddToggle({
 })
 
 movSection:AddSlider({
-    Name="Lucky Block Speed", Default=1000, Min=50, Max=3000, Round=0,
+    Name="Velocidad del Bloque", Default=1000, Min=50, Max=3000, Round=0,
     Callback=function(value) sliderValue = value end
 })
 
 -- ───────────── DERECHA ─────────────
 local rewardSection = mainTab:DrawSection({ Name="Recompensas", Position="right", Minimized=true })
 
-rewardSection:AddButton({ Name="Pickup All Your Brainrots", Callback=function()
+rewardSection:AddButton({ Name="Recoger Todos los Brainrots", Callback=function()
     local username = LP.Name
     local plotsFolder = workspace:WaitForChild("Plots")
     local myPlot = nil
@@ -963,25 +964,20 @@ rewardSection:AddButton({ Name="Pickup All Your Brainrots", Callback=function()
             local container = cf[tostring(i)]
             local innerModel = container:FindFirstChild("InnerModel")
             if innerModel and #innerModel:GetChildren() > 0 then
-                local remote = findRemote("ContainerService", "PickupBrainrot")
-                if remote then remote:InvokeServer(tostring(i)) end
+                if rf.PickupBrainrot then rf.PickupBrainrot:InvokeServer(tostring(i)) end
                 task.wait(0.1)
             end
         end
     end
-    notify("Picked up all Brainrots!", 5)
+    notify("Brainrots recogidos.", 5)
 end })
 
-rewardSection:AddButton({ Name="Sell All Brainrots", Callback=function()
-    if rf.SellAllBrainrots then
-        safeInvoke(rf.SellAllBrainrots)
-        notify("Brainrots vendidos.", 3)
-    else
-        notify("Remoto SellAllBrainrots no encontrado.", 4)
-    end
+rewardSection:AddButton({ Name="Vender Todos los Brainrots", Callback=function()
+    if rf.SellAllBrainrots then safeInvoke(rf.SellAllBrainrots) notify("Brainrots vendidos.", 3)
+    else notify("Remoto SellAllBrainrots no encontrado.", 4) end
 end })
 
-rewardSection:AddButton({ Name="Drop All Pickup", Callback=function()
+rewardSection:AddButton({ Name="Soltar Todo", Callback=function()
     if rf.DropAll then safeInvoke(rf.DropAll) notify("DropAll enviado.", 3)
     else notify("Remoto DropAll no encontrado.", 4) end
 end })
@@ -992,100 +988,56 @@ rewardSection:AddButton({ Name="Reclamar Bloque Espiritual", Callback=function()
     notify(ok and "Reclamo enviado!" or "Error: " .. tostring(result), 5)
 end })
 
-rewardSection:AddButton({ Name="Claim Base Event Reward", Callback=function()
-    if rf.ClaimBaseEvent then safeInvoke(rf.ClaimBaseEvent) notify("Base Event reclamado.", 3)
-    elseif rf.ClaimLuminous then safeInvoke(rf.ClaimLuminous) notify("Luminous Reward reclamado.", 3)
+rewardSection:AddButton({ Name="Reclamar Evento Base", Callback=function()
+    if rf.ClaimBaseEvent then safeInvoke(rf.ClaimBaseEvent) notify("Evento base reclamado.", 3)
+    elseif rf.ClaimLuminous then safeInvoke(rf.ClaimLuminous) notify("Recompensa luminosa reclamada.", 3)
     else notify("Remoto ClaimReward no encontrado.", 4) end
 end })
 
-rewardSection:AddButton({ Name="Claim Free Shop", Callback=function()
-    if rf.FreeShopClaim then safeInvoke(rf.FreeShopClaim) notify("Free Shop reclamado.", 3)
-    else notify("Remoto FreeShop.Claim no encontrado.", 4) end
+rewardSection:AddButton({ Name="Reclamar Tienda Gratis", Callback=function()
+    if rf.FreeShopClaim then safeInvoke(rf.FreeShopClaim) notify("Tienda gratis reclamada.", 3)
+    else notify("Remoto FreeShopClaim no encontrado.", 4) end
 end })
 
-rewardSection:AddButton({ Name="Claim Daily Rewards", Callback=function()
+rewardSection:AddButton({ Name="Reclamar Recompensas Diarias", Callback=function()
     if rf.DailyClaimFirst then safeInvoke(rf.DailyClaimFirst) end
     if rf.DailyClaim then safeInvoke(rf.DailyClaim) end
     if rf.DailyClaimVIP then safeInvoke(rf.DailyClaimVIP) end
-    notify("Daily Rewards reclamados.", 3)
+    notify("Recompensas diarias reclamadas.", 3)
 end })
 
-rewardSection:AddButton({ Name="Spin All Wheel", Callback=function()
-    if rf.SpinAll then safeInvoke(rf.SpinAll) notify("SpinAll enviado.", 3)
-    elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) notify("SpinWheel enviado.", 3)
+rewardSection:AddButton({ Name="Girar Ruleta", Callback=function()
+    if rf.SpinAll then safeInvoke(rf.SpinAll) notify("Ruleta girada.", 3)
+    elseif rf.SpinWheel then safeInvoke(rf.SpinWheel) notify("Ruleta girada.", 3)
     else notify("Remoto SpinWheel no encontrado.", 4) end
 end })
 
-rewardSection:AddButton({ Name="Redeem All Codes", Callback=function()
-    local redeem = findRemote("CodesService", "RedeemCode")
-    if not redeem then notify("Remoto RedeemCode no encontrado.", 5) return end
-    for _, code in ipairs(codes) do pcall(function() redeem:InvokeServer(code) end) task.wait(1) end
-    pcall(function() redeem:InvokeServer("DEVIL") end)
+rewardSection:AddButton({ Name="Canjear Codigos", Callback=function()
+    if not rf.RedeemCode then notify("Remoto RedeemCode no encontrado.", 5) return end
+    for _, code in ipairs(codes) do pcall(function() rf.RedeemCode:InvokeServer(code) end) task.wait(1) end
+    pcall(function() rf.RedeemCode:InvokeServer("DEVIL") end)
     notify("Codigos canjeados.", 4)
 end })
 
-rewardSection:AddButton({ Name="Buy Best Luckyblock", Callback=function()
-    local buy = findRemote("SkinService", "BuySkin")
-    if not buy then notify("Remoto BuySkin no encontrado.", 5) return end
-    local gui = LP.PlayerGui:FindFirstChild("Windows")
-    local scrollingFrame = gui and gui:FindFirstChild("PickaxeShop") and
-        gui.PickaxeShop:FindFirstChild("ShopContainer") and
-        gui.PickaxeShop.ShopContainer:FindFirstChild("ScrollingFrame")
-    if not scrollingFrame then notify("ScrollingFrame no encontrado.", 5) return end
-    local cash = LP.leaderstats.Cash.Value
-    local bestSkin, bestPrice = nil, 0
-    for _, name in ipairs(skins) do
-        local item = scrollingFrame:FindFirstChild(name)
-        if item then
-            local buyButton = item:FindFirstChild("Main") and item.Main:FindFirstChild("Buy") and item.Main.Buy:FindFirstChild("BuyButton")
-            if buyButton and buyButton.Visible then
-                local cashLabel = buyButton:FindFirstChild("Cash")
-                if cashLabel then
-                    local price = parseCash(cashLabel.Text)
-                    if cash >= price and price > bestPrice then bestSkin = name bestPrice = price end
-                end
-            end
-        end
-    end
-    if bestSkin then pcall(function() buy:InvokeServer(bestSkin) end) notify("Comprado: " .. bestSkin, 4)
-    else notify("No hay skin disponible.", 4) end
+rewardSection:AddButton({ Name="Comprar Mejor Luckyblock", Callback=function()
+    doBuyBestLuckyblock()
 end })
 
-rewardSection:AddButton({ Name="Claim Event Pass Rewards", Callback=function()
-    local claim = findRemote("SeasonPassService", "ClaimPassReward")
-    if not claim then notify("Remoto ClaimPassReward no encontrado.", 5) return end
-    local ok, gui = pcall(function()
-        return LP:WaitForChild("PlayerGui"):WaitForChild("Windows")
-            :WaitForChild("Event"):WaitForChild("Frame"):WaitForChild("Frame")
-            :WaitForChild("Windows"):WaitForChild("Pass"):WaitForChild("Main"):WaitForChild("ScrollingFrame")
-    end)
-    if not ok or not gui then notify("GUI de evento no encontrada.", 5) return end
-    local claimed = 0
-    for i = 1, 10 do
-        local item = gui:FindFirstChild(tostring(i))
-        if item and item:FindFirstChild("Frame") and item.Frame:FindFirstChild("Free") then
-            local free = item.Frame.Free
-            local locked = free:FindFirstChild("Locked")
-            local claimedEl = free:FindFirstChild("Claimed")
-            if locked and not locked.Visible and not (claimedEl and claimedEl.Visible) then
-                pcall(function() claim:InvokeServer("Free", i) end)
-                claimed = claimed + 1
-                task.wait(0.1)
-            end
-        end
-    end
-    notify("Recompensas reclamadas: " .. claimed, 4)
+rewardSection:AddButton({ Name="Reclamar Pase de Evento", Callback=function()
+    local claimed = doClaimEventPass()
+    if claimed > 0 then notify("Recompensas reclamadas: " .. claimed, 4)
+    else notify("Sin recompensas disponibles o GUI no encontrada.", 5) end
 end })
 
-rewardSection:AddButton({ Name="Claim Playtime Rewards", Callback=function()
+rewardSection:AddButton({ Name="Reclamar Recompensas de Tiempo", Callback=function()
     local claimGift = findRemote("PlaytimeRewardService", "ClaimGift")
     if not claimGift then notify("Remoto ClaimGift no encontrado.", 5) return end
     for reward = 1, 12 do pcall(function() claimGift:InvokeServer(reward) end) task.wait(0.25) end
-    notify("Playtime rewards reclamados.", 4)
+    notify("Recompensas de tiempo reclamadas.", 4)
 end })
 
-rewardSection:AddButton({ Name="Claim Quest Reward", Callback=function()
-    if rf.QuestClaim then safeInvoke(rf.QuestClaim) notify("Quest reward reclamado.", 3)
+rewardSection:AddButton({ Name="Reclamar Mision", Callback=function()
+    if rf.QuestClaim then safeInvoke(rf.QuestClaim) notify("Mision reclamada.", 3)
     else notify("Remoto QuestClaim no encontrado.", 4) end
 end })
 
@@ -1093,10 +1045,10 @@ end })
 local settingsTab = Window:DrawTab({ Name="Ajustes", Icon="settings", Type="Single" })
 local settingsSection = settingsTab:DrawSection({ Name="Configuracion", Position="full" })
 
-settingsSection:AddToggle({ Name="Always Show Frame", Default=false,
+settingsSection:AddToggle({ Name="Siempre Mostrar Ventana", Default=false,
     Callback=function(v) pcall(function() Window.AlwaysShowTab = v end) end })
 
-settingsSection:AddColorPicker({ Name="Color Highlight", Default=Compkiller.Colors.Highlight,
+settingsSection:AddColorPicker({ Name="Color de Resalte", Default=Compkiller.Colors.Highlight,
     Callback=function(v) Compkiller:ChangeHighlightColor(v) end })
 
 local themes = {
