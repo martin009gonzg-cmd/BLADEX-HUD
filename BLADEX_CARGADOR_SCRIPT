@@ -5,181 +5,160 @@ local function _()
     local _3 = pcall
     local _4 = warn
     local _5 = print
+    local _6 = error
     local _7 = task.wait
     local _8 = tostring
-
+    local _9 = pairs
+    local _10 = type
+    local _11 = table.insert
+    
     -- ═══════════════════════════════════════════════════════════════
     -- CONFIGURACION DE JUEGOS SOPORTADOS (10 RANURAS)
     -- ═══════════════════════════════════════════════════════════════
-
+    
     -- RANURA 1
-    _0[99435399946069]  = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", "[NEW] Reel a Brainrot! [GAME]"}
-
+    _0[99435399946069] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", "[NEW] Reel a Brainrot! [GAME]"}
+    
     -- RANURA 2
     _0[124473577469410] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block", "Be a Lucky Block"}
-
+    
     -- RANURA 3
     _0[106772177198260] = {"https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT", "Reel a Brainrot"}
-
+    
     -- RANURA 4
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 5
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 6
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 7
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 8
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 9
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- RANURA 10
     -- _0[TU_PLACE_ID_AQUI] = {"URL_DEL_SCRIPT_AQUI", "NOMBRE_DEL_JUEGO"}
-
+    
     -- ═══════════════════════════════════════════════════════════════
-
-    local LIB_URL        = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/bladex_lib"
-    local MAX_REINTENTOS = 3
-    local ESPERA_RETRY   = 2
-
-    -- ── Verificar PlaceId ──────────────────────────────────────────
-    local placeId  = _1.PlaceId
-    local gameInfo = _0[placeId]
-
-    if not gameInfo then
-        _4("[BLADEX] Juego no soportado. PlaceId: " .. _8(placeId))
+    
+    -- URLs de respaldo para la libreria
+    local LIBRARY_URLS = {
+        "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA",
+        "https://pastebin.com/raw/ufVie1pF"
+    }
+    
+    local _b = _1.PlaceId
+    local _c = _0[_b]
+    
+    if not _c then
+        _4("[BLADEX] Juego no soportado: " .. _8(_b))
         _5("[BLADEX] Juegos disponibles:")
-        for id, info in pairs(_0) do
-            _5("  -> PlaceId " .. _8(id) .. " = " .. info[2])
+        for _d, _e in _9(_0) do
+            _5("  -> " .. _8(_d) .. " - " .. _e[2])
         end
         return
     end
-
-    local SCRIPT_URL = gameInfo[1]
-    local GAME_NAME  = gameInfo[2]
-
-    _5("[BLADEX] ══════════════════════════════")
-    _5("[BLADEX] Juego detectado: " .. GAME_NAME)
-    _5("[BLADEX] Iniciando cargador v2...")
-    _5("[BLADEX] ══════════════════════════════")
-
-    -- ── HttpGet con reintentos ─────────────────────────────────────
-    local function descargar(url, nombre)
-        for intento = 1, MAX_REINTENTOS do
-            _5("[BLADEX] Descargando " .. nombre .. " (" .. intento .. "/" .. _8(MAX_REINTENTOS) .. ")...")
-
-            local ok, resultado = _3(function()
-                return _1:HttpGet(url, true)
-            end)
-
-            if ok and resultado and #resultado > 100 then
-                _5("[BLADEX] " .. nombre .. " OK (" .. _8(#resultado) .. " bytes)")
-                return resultado
+    
+    local _f = _c[1]
+    local _g = _c[2]
+    
+    _5("[BLADEX] Juego detectado: " .. _g)
+    _5("[BLADEX] Iniciando cargador v3...")
+    
+    -- Funcion de descarga con reintentos y multiples URLs
+    local function downloadWithRetries(urls, maxAttemptsPerUrl, baseDelay)
+        maxAttemptsPerUrl = maxAttemptsPerUrl or 3
+        baseDelay = baseDelay or 2
+        
+        for attempt = 1, maxAttemptsPerUrl do
+            for _, url in ipairs(urls) do
+                _5(string.format("[BLADEX] Descargando (%d/%d) desde: %s", attempt, maxAttemptsPerUrl, url))
+                local success, result = _3(function()
+                    return _1:HttpGet(url)
+                end)
+                
+                if success and result and #result > 0 then
+                    _5("[BLADEX] Descarga exitosa")
+                    return result
+                else
+                    _4(string.format("[BLADEX] Fallo descarga: %s", success and "contenido vacio" or _8(result)))
+                end
             end
-
-            _4("[BLADEX] Fallo descarga " .. nombre .. ": " .. _8(resultado))
-
-            if intento < MAX_REINTENTOS then
-                _5("[BLADEX] Reintentando en " .. ESPERA_RETRY .. "s...")
-                _7(ESPERA_RETRY)
+            
+            if attempt < maxAttemptsPerUrl then
+                local waitTime = baseDelay * (2 ^ (attempt - 1))
+                _5(string.format("[BLADEX] Reintentando en %ds...", waitTime))
+                _7(waitTime)
             end
         end
-
-        _4("[BLADEX] No se pudo descargar " .. nombre .. " tras " .. MAX_REINTENTOS .. " intentos.")
         return nil
     end
-
-    -- ── Compilar con validacion ────────────────────────────────────
-    local function compilar(codigo, nombre)
-        if not codigo or #codigo < 10 then
-            _4("[BLADEX] Codigo de " .. nombre .. " vacio o corrupto.")
-            return nil
-        end
-
-        local ok, fn = _3(loadstring, codigo)
-
-        if not ok or type(fn) ~= "function" then
-            _4("[BLADEX] Error compilando " .. nombre .. ": " .. _8(fn))
-            return nil
-        end
-
-        return fn
+    
+    -- Descargar libreria con reintentos y URLs de respaldo
+    _5("[BLADEX] Descargando libreria BLADEX_LIBRERIA...")
+    local libraryCode = downloadWithRetries(LIBRARY_URLS, 3, 2)
+    if not libraryCode then
+        _6("[BLADEX] FATAL: No se pudo descargar la libreria tras multiples intentos.")
+        return
     end
-
-    -- ── Cargar libreria (reutiliza si ya esta en memoria) ──────────
-    local ck = _2().Compkiller
-    if ck and type(ck) == "table" and ck.newNotify then
-        _5("[BLADEX] Compkiller ya en memoria, reutilizando.")
-    else
-        _5("[BLADEX] Descargando libreria Compkiller...")
-
-        local libCodigo = descargar(LIB_URL, "Compkiller")
-        if not libCodigo then
-            _4("[BLADEX] FATAL: No se pudo cargar la libreria. Abortando.")
-            return
-        end
-
-        local libFn = compilar(libCodigo, "Compkiller")
-        if not libFn then
-            _4("[BLADEX] FATAL: Error compilando libreria. Abortando.")
-            return
-        end
-
-        local okEjec, resultado = _3(libFn)
-        if okEjec and resultado then
-            _2().Compkiller = resultado
-        elseif not okEjec then
-            _4("[BLADEX] FATAL: Error ejecutando libreria: " .. _8(resultado))
-            return
-        end
+    
+    -- Compilar y ejecutar libreria
+    local libraryFunc, compileErr = _3(loadstring, libraryCode)
+    if not libraryFunc then
+        _6("[BLADEX] Error al compilar libreria: " .. _8(compileErr))
+        return
     end
-
-    -- ── Esperar newNotify con timeout ──────────────────────────────
-    local Compkiller = nil
-    for i = 1, 15 do
-        local tmp = _2().Compkiller
-        if tmp and type(tmp) == "table" and tmp.newNotify then
-            Compkiller = tmp
+    
+    local libraryObj = libraryFunc()
+    if _10(libraryObj) ~= "table" then
+        _6("[BLADEX] La libreria no devolvio una tabla valida.")
+        return
+    end
+    
+    _2().Compkiller = libraryObj   -- mantener compatibilidad con el nombre original
+    
+    -- Esperar a que la libreria este lista (hasta 10s)
+    _5("[BLADEX] Verificando libreria...")
+    local maxWait = 20
+    for waitStep = 1, maxWait do
+        local lib = _2().Compkiller
+        if lib and _10(lib) == "table" and lib.newNotify then
+            _5("[BLADEX] Libreria lista (version: " .. _8(lib.Version or "desconocida") .. ")")
             break
         end
-        _5("[BLADEX] Esperando Compkiller... (" .. i .. "/15)")
-        _7(0.4)
+        if waitStep == maxWait then
+            _6("[BLADEX] Timeout: La libreria no se inicializo correctamente.")
+            return
+        end
+        _7(0.5)
     end
-
-    if not Compkiller then
-        _4("[BLADEX] FATAL: Compkiller no disponible tras espera. Abortando.")
+    
+    -- Descargar script del juego
+    _5("[BLADEX] Descargando script del juego...")
+    local gameScript = downloadWithRetries({_f}, 3, 2)
+    if not gameScript then
+        _6("[BLADEX] Fallo la descarga del script principal.")
         return
     end
-
-    _5("[BLADEX] Libreria OK - Version: " .. _8(Compkiller.Version or "2.6"))
-
-    -- ── Cargar script del juego ────────────────────────────────────
-    local scriptCodigo = descargar(SCRIPT_URL, GAME_NAME)
-
-    if not scriptCodigo then
-        _4("[BLADEX] FATAL: No se pudo cargar el script. Abortando.")
+    
+    -- Compilar script del juego
+    local gameFunc, compileGameErr = _3(loadstring, gameScript)
+    if not gameFunc then
+        _6("[BLADEX] Error al compilar script del juego: " .. _8(compileGameErr))
         return
     end
-
-    local scriptFn = compilar(scriptCodigo, GAME_NAME)
-    if not scriptFn then
-        _4("[BLADEX] FATAL: Error compilando script. Abortando.")
-        return
-    end
-
-    -- ── Asegurar Compkiller antes de ejecutar ──────────────────────
-    _2().Compkiller = Compkiller
-    _5("[BLADEX] Ejecutando " .. GAME_NAME .. "...")
-
-    local okRun, errRun = _3(scriptFn)
-
-    if okRun then
+    
+    -- Ejecutar script
+    _5("[BLADEX] Ejecutando " .. _g .. "...")
+    local execSuccess, execErr = _3(gameFunc)
+    if execSuccess then
         _5("")
         _5("██████╗ ██╗      █████╗ ██████╗ ███████╗██╗  ██╗")
         _5("██╔══██╗██║     ██╔══██╗██╔══██╗██╔════╝╚██╗██╔╝")
@@ -188,13 +167,10 @@ local function _()
         _5("██████╔╝███████╗██║  ██║██████╔╝███████╗██╔╝ ██╗")
         _5("╚═════╝ ╚══════╝╚═╝  ╚═╝╚═════╝ ╚══════╝╚═╝  ╚═╝")
         _5("")
-        _5("          >> " .. GAME_NAME .. " CARGADO <<")
+        _5("                          BLADEX CARGADO")
         _5("")
     else
-        _4("[BLADEX] Error ejecutando " .. GAME_NAME .. ":")
-        _4("[BLADEX] " .. _8(errRun))
-        _4("[BLADEX] Verifica que el script sea compatible con este juego.")
+        _4("[BLADEX] Error en ejecucion: " .. _8(execErr))
     end
 end
-
 _()
