@@ -46,7 +46,7 @@ local function _()
     
     -- ═══════════════════════════════════════════════════════════════
     
-    local _a = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRALY"
+    local _a = "https://pastebin.com/raw/ufVie1pF"
     local _b = _1.PlaceId
     local _c = _0[_b]
     
