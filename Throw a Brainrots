@@ -1,0 +1,249 @@
+if not Compkiller then
+    warn("[BLADEX] Compkiller no encontrado. Carga la libreria antes de ejecutar este script.")
+    return
+end
+
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local function notify(content, duration)
+    Notifier.new({
+        Title    = "BLADEX HUD",
+        Content  = content,
+        Duration = duration or 4,
+        Icon     = Compkiller.Logo
+    })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-BrainrootUltra",
+})
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace         = game:GetService("Workspace")
+local lp                = Players.LocalPlayer
+
+local DELAY_BETWEEN_SLOTS_COLLECT = 0.05
+local DELAY_BETWEEN_SLOTS_PICKUP  = 0.05
+local DELAY_BETWEEN_SLOTS_UPGRADE = 0.005
+local CYCLE_WAIT_COLLECT          = 5
+local CYCLE_WAIT_PICKUP           = 5
+local CYCLE_WAIT_UPGRADE          = 0.1
+local CYCLE_WAIT_BASE             = 0.5
+local CYCLE_WAIT_REBIRTH          = 2
+local CYCLE_WAIT_POWER            = 1
+local CYCLE_WAIT_CARRY            = 2
+
+local mainRemote    = ReplicatedStorage:FindFirstChild("RF/Plot.PlotAction", true)
+local baseRemote    = ReplicatedStorage:FindFirstChild("RE/Plot.UpgradeBase", true)
+local remFuncs      = ReplicatedStorage:FindFirstChild("RemoteFunctions", true)
+local rebirthRemote = remFuncs and remFuncs:FindFirstChild("Rebirth")
+local speedRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeSpeed")
+local carryRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeCarry")
+
+local function detectUUID()
+    for k, v in pairs(lp:GetAttributes()) do
+        if type(v) == "string" and v:match("%x+%-%x+%-%x+%-%x+%-%x+") then return v end
+    end
+    local ls = lp:FindFirstChild("leaderstats")
+    if ls then
+        for _, child in ipairs(ls:GetChildren()) do
+            if type(child.Value) == "string" and child.Value:match("%x+%-%x+%-%x+%-%x+%-%x+") then
+                return child.Value
+            end
+        end
+    end
+    return nil
+end
+local currentUUID = detectUUID()
+
+local function collectSlot(slot)
+    if not mainRemote or not currentUUID then return false end
+    return pcall(mainRemote.InvokeServer, mainRemote, "Collect Money", currentUUID, tostring(slot))
+end
+local function pickupBrainrotSlot(slot)
+    if not mainRemote or not currentUUID then return false end
+    return pcall(mainRemote.InvokeServer, mainRemote, "Pick Up Brainrot", currentUUID, tostring(slot))
+end
+local function upgradeBrainrotSlot(slot)
+    if not mainRemote or not currentUUID then return false end
+    return pcall(mainRemote.InvokeServer, mainRemote, "Upgrade Brainrot", currentUUID, tostring(slot))
+end
+local function upgradeBase()
+    if not baseRemote then return false end
+    return pcall(baseRemote.FireServer, baseRemote)
+end
+local function doRebirth()
+    if not rebirthRemote then return false end
+    return pcall(rebirthRemote.InvokeServer, rebirthRemote)
+end
+local powerLevels = {10, 5, 1}
+local function doPowerUpgrades()
+    if not speedRemote then return false end
+    for _, level in ipairs(powerLevels) do
+        pcall(speedRemote.InvokeServer, speedRemote, level)
+        task.wait(0.3)
+    end
+    return true
+end
+local function doCarryUpgrade()
+    if not carryRemote then return false end
+    return pcall(carryRemote.InvokeServer, carryRemote)
+end
+local function runSlots(actionFunc, delay)
+    local threads = {}
+    for slot = 1, 30 do
+        threads[slot] = task.spawn(function() actionFunc(slot) end)
+        if delay > 0 then task.wait(delay) end
+    end
+    for slot = 1, 30 do
+        while coroutine.status(threads[slot]) ~= "dead" do task.wait() end
+    end
+end
+
+local char = lp.Character or lp.CharacterAdded:Wait()
+local hrp  = char:WaitForChild("HumanoidRootPart")
+
+local throwRemote    = nil
+local catchRemote    = nil
+local fishBiteRemote = nil
+
+local function deepSearch(container, depth)
+    if depth > 10 then return end
+    for _, obj in ipairs(container:GetChildren()) do
+        if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+            if obj.Name == "ThrowSpear"  then throwRemote  = obj end
+            if obj.Name == "CatchResult" then catchRemote  = obj end
+        end
+        deepSearch(obj, depth + 1)
+    end
+end
+deepSearch(ReplicatedStorage, 0)
+deepSearch(Workspace, 0)
+
+for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+    if obj.Name == "FishBite" and obj:IsA("RemoteEvent") then
+        fishBiteRemote = obj
+        break
+    end
+end
+
+local waterParts = {}
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if obj:IsA("BasePart") and obj.Name:lower():find("water") then
+        table.insert(waterParts, obj)
+    end
+end
+
+local spearConfig = {
+    enabled   = false,
+    interval  = 20,
+    spearName = "Inferno Spear",
+    force     = 0.9785663485527039,
+    direction = Vector3.new(1, 0, 5.116264501631423e-15),
+}
+
+local function doAutoThrow()
+    if not throwRemote then return end
+    pcall(function()
+        throwRemote:FireServer(spearConfig.force, spearConfig.direction, spearConfig.spearName)
+    end)
+end
+
+task.spawn(function()
+    while true do
+        if spearConfig.enabled then
+            doAutoThrow()
+            task.wait(spearConfig.interval)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+if fishBiteRemote then
+    fishBiteRemote.OnClientEvent:Connect(function()
+        if spearConfig.enabled and catchRemote then
+            pcall(function() catchRemote:FireServer(true) end)
+            pcall(function() catchRemote:FireServer(1)    end)
+            pcall(function() catchRemote:FireServer()     end)
+        end
+    end)
+end
+
+local activeThreads = {}
+local function startLoop(name, fn)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+    activeThreads[name] = task.spawn(fn)
+end
+local function stopLoop(name)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+end
+
+local function loopCollect() while true do if currentUUID then runSlots(collectSlot, DELAY_BETWEEN_SLOTS_COLLECT) end task.wait(CYCLE_WAIT_COLLECT) end end
+local function loopPickup()  while true do if currentUUID then runSlots(pickupBrainrotSlot, DELAY_BETWEEN_SLOTS_PICKUP) end task.wait(CYCLE_WAIT_PICKUP) end end
+local function loopUpgrade() while true do if currentUUID then runSlots(upgradeBrainrotSlot, DELAY_BETWEEN_SLOTS_UPGRADE) end task.wait(CYCLE_WAIT_UPGRADE) end end
+local function loopBase()    while true do upgradeBase() task.wait(CYCLE_WAIT_BASE) end end
+local function loopRebirth() while true do doRebirth() task.wait(CYCLE_WAIT_REBIRTH) end end
+local function loopPower()   while true do doPowerUpgrades() task.wait(CYCLE_WAIT_POWER) end end
+local function loopCarry()   while true do doCarryUpgrade() task.wait(CYCLE_WAIT_CARRY) end end
+
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local farmTab = Window:DrawTab({
+    Name            = "Auto Farm",
+    Icon            = Compkiller.Logo,
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local SecLeft  = farmTab:DrawSection({ Name = "Auto Farm",   Position = "left",  Minimized = false })
+local SecRight = farmTab:DrawSection({ Name = "Auto Extras", Position = "right", Minimized = false })
+
+SecLeft:AddToggle({
+    Name = "Auto Spear", Default = false, Flag = "BLADEX_autospear",
+    Callback = function(v)
+        spearConfig.enabled = v
+    end
+})
+
+SecLeft:AddToggle({ Name = "Auto Collect Money", Default = false, Flag = "BLADEX_collect",
+    Callback = function(v) if v then startLoop("Collect", loopCollect) else stopLoop("Collect") end end })
+
+SecLeft:AddToggle({ Name = "Auto Upgrade Brainrot", Default = false, Flag = "BLADEX_upgrade",
+    Callback = function(v) if v then startLoop("Upgrade", loopUpgrade) else stopLoop("Upgrade") end end })
+
+SecLeft:AddToggle({ Name = "Auto Rebirth", Default = false, Flag = "BLADEX_rebirth",
+    Callback = function(v) if v then startLoop("Rebirth", loopRebirth) else stopLoop("Rebirth") end end })
+
+SecLeft:AddToggle({ Name = "Auto Power Upgrades", Default = false, Flag = "BLADEX_power",
+    Callback = function(v) if v then startLoop("Power", loopPower) else stopLoop("Power") end end })
+
+SecRight:AddToggle({ Name = "Auto Upgrade Base", Default = false, Flag = "BLADEX_base",
+    Callback = function(v) if v then startLoop("Base", loopBase) else stopLoop("Base") end end })
+
+SecRight:AddToggle({ Name = "Auto Carry", Default = false, Flag = "BLADEX_carry",
+    Callback = function(v) if v then startLoop("Carry", loopCarry) else stopLoop("Carry") end end })
+
+SecRight:AddToggle({ Name = "Auto Pickup Brainrot", Default = false, Flag = "BLADEX_pickup",
+    Callback = function(v) if v then startLoop("Pickup", loopPickup) else stopLoop("Pickup") end end })
+
+Window:DrawCategory({ Name = "Misc" })
+
+Window:DrawConfig({
+    Name   = "Config",
+    Icon   = "folder",
+    Config = ConfigManager
+}):Init()
