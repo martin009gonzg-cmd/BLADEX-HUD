@@ -1,0 +1,496 @@
+-- BLADEX HUD - Be a Lucky Block | v4.0
+-- by Martin009191 | BLADEX Project
+
+local function loadLib()
+    local urls = {
+        "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA",
+        "https://pastebin.com/raw/ufVie1pF"
+    }
+    for _, url in ipairs(urls) do
+        local ok, res = pcall(game.HttpGet, game, url)
+        if ok and res and #res > 100 then
+            local func = loadstring(res)
+            if func then
+                local lib = func()
+                if lib then return lib end
+            end
+        end
+    end
+    return nil
+end
+
+local Compkiller = loadLib()
+if not Compkiller then return end
+
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local function notify(content, duration)
+    Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-LuckyBlockFull",
+})
+
+-- SERVICIOS
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace         = game:GetService("Workspace")
+local LocalPlayer       = Players.LocalPlayer
+
+local Net = ReplicatedStorage:WaitForChild("Packages", 5)
+        and ReplicatedStorage.Packages:WaitForChild("Net", 5)
+
+local function getRF(name)
+    if not Net then return nil end
+    return Net:FindFirstChild("RF/" .. name)
+end
+
+local function safeInvoke(rfName, ...)
+    local remote = getRF(rfName)
+    if not remote then return false, nil end
+    return pcall(remote.InvokeServer, remote, ...)
+end
+
+local function doRebirth()
+    local remote = ReplicatedStorage.Packages.Net:FindFirstChild("RF/Rebirth")
+    if not remote then return false end
+    return pcall(remote.InvokeServer, remote)
+end
+
+-- FLAGS
+_G.BLADEX_AutoCollect      = false
+_G.BLADEX_AutoCash         = false
+_G.BLADEX_AutoSell         = false
+_G.BLADEX_AutoRebirth      = false
+_G.BLADEX_AutoUpgradeBase  = false
+_G.BLADEX_AutoUpgradeSpeed = false
+_G.BLADEX_AutoBuyFood      = false
+_G.BLADEX_AutoFeedBrainrot = false
+_G.BLADEX_FarmGalaxy       = false
+_G.BLADEX_FarmNeon         = false
+_G.BLADEX_FarmDiamond      = false
+_G.BLADEX_FarmGold         = false
+
+-- LOOP MANAGER
+local activeThreads = {}
+
+local function startLoop(name, fn)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+    activeThreads[name] = task.spawn(fn)
+end
+
+local function stopLoop(name)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+end
+
+local function toggleLoop(name, val, fn)
+    _G["BLADEX_" .. name] = val
+    if val then startLoop(name, fn) else stopLoop(name) end
+end
+
+-- UTILIDADES
+local function getHRP()
+    local char = LocalPlayer.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
+local function getTP()
+    local ok, res = pcall(function()
+        return Workspace.Areas.Area0.Decoration.Grass:GetChildren()[4]:GetChildren()[2]
+    end)
+    return ok and res or nil
+end
+
+local function firePromptOnPart(part, hrp)
+    if not part or not hrp then return end
+    hrp.CFrame = (part.CFrame or part:GetPivot()) + Vector3.new(0, 2, 0)
+    task.wait(0.15)
+    local prompt = part:FindFirstChildOfClass("ProximityPrompt")
+    if not prompt then
+        local att = part:FindFirstChild("PromptAttachment")
+        if att then prompt = att:FindFirstChildOfClass("ProximityPrompt") end
+    end
+    if not prompt then
+        prompt = part:FindFirstChildWhichIsA("ProximityPrompt", true)
+    end
+    if prompt then
+        pcall(function() fireproximityprompt(prompt) end)
+    end
+end
+
+-- DETECCION DE PLOT (deteccion parcial por nombre/UID)
+local function matchesPlayer(value)
+    if not value then return false end
+    local v   = tostring(value):lower()
+    local uid = tostring(LocalPlayer.UserId):lower()
+    local nam = LocalPlayer.Name:lower()
+    return v == uid or v == nam or v:find(nam, 1, true) ~= nil or v:find(uid, 1, true) ~= nil
+end
+
+local function scanDescendants(instance)
+    for _, d in ipairs(instance:GetDescendants()) do
+        if (d:IsA("StringValue") or d:IsA("IntValue")) and matchesPlayer(d.Value) then return true end
+        if d:IsA("ObjectValue") and d.Value == LocalPlayer then return true end
+        if (d:IsA("TextLabel") or d:IsA("TextButton")) and matchesPlayer(d.Text) then return true end
+    end
+    return false
+end
+
+local function detectMyPlot()
+    local containers = { Workspace }
+    for _, name in ipairs({ "Plots", "Map", "Game", "World", "Tycoons" }) do
+        local f = Workspace:FindFirstChild(name)
+        if f then table.insert(containers, f) end
+    end
+    for _, container in ipairs(containers) do
+        for _, plot in ipairs(container:GetChildren()) do
+            if not plot:IsA("Model") then continue end
+            for _, key in ipairs({ "UserId","OwnerId","Owner","PlayerUserId","PlayerName" }) do
+                if matchesPlayer(plot:GetAttribute(key)) then return plot end
+            end
+            local pi = plot:FindFirstChild("PlayerInfo")
+            if pi then
+                for _, key in ipairs({ "UserId","OwnerId","Owner","PlayerUserId","PlayerName" }) do
+                    if matchesPlayer(pi:GetAttribute(key)) then return plot end
+                end
+                if scanDescendants(pi) then return plot end
+            end
+            if pi and scanDescendants(plot) then return plot end
+        end
+    end
+    return nil
+end
+
+local function getPlotNumber(plot)
+    local n = tonumber(plot.Name)
+    if n then return n end
+    for _, key in ipairs({ "PlotIndex","PlotId","Index","ID" }) do
+        local v = tonumber(plot:GetAttribute(key))
+        if v then return v end
+    end
+    local idx = 0
+    for _, sib in ipairs(plot.Parent:GetChildren()) do
+        if sib:IsA("Model") then
+            idx += 1
+            if sib == plot then return idx end
+        end
+    end
+    return 1
+end
+
+-- AUTO COLLECT — RF/CollectMoney, 30 slots al instante
+local collectCache = { plot = nil, num = nil }
+
+local function refreshPlotCache()
+    if not collectCache.plot or not collectCache.plot.Parent then
+        collectCache.plot = detectMyPlot()
+        collectCache.num  = collectCache.plot and getPlotNumber(collectCache.plot) or nil
+    end
+end
+
+local function doCollect()
+    refreshPlotCache()
+    if not collectCache.num then task.wait(2) return end
+    local remote = getRF("CollectMoney")
+    if not remote then task.wait(1) return end
+    for i = 1, 30 do
+        pcall(remote.InvokeServer, remote, collectCache.num, i)
+    end
+end
+
+-- AUTO CASH — RF/CollectCash, 30 slots al instante
+local function doCash()
+    refreshPlotCache()
+    if not collectCache.num then task.wait(2) return end
+    local remote = getRF("CollectCash") or getRF("CashCollect") or getRF("CollectMoney")
+    if not remote then task.wait(1) return end
+    for i = 1, 30 do
+        pcall(remote.InvokeServer, remote, collectCache.num, i)
+    end
+end
+
+-- FEED BRAINROTS
+local function feedAllBrainrots()
+    local remote = ReplicatedStorage.Packages.Net:FindFirstChild("RF/FeedBrainrot")
+    if not remote then return end
+    for slot = 1, 30 do
+        pcall(remote.InvokeServer, remote, slot, "Celestial Feast", 1)
+        task.wait(0.1)
+    end
+end
+
+-- FARM MUTATIONS
+local function firePromptOnPad(pad, hrp)
+    if not pad or not hrp then return end
+    hrp.CFrame = pad:GetPivot() + Vector3.new(0, 2, 0)
+    task.wait(0.15)
+    local prompt = pad:FindFirstChild("PromptAttachment")
+        and pad.PromptAttachment:FindFirstChildOfClass("ProximityPrompt")
+    if prompt then
+        pcall(function() fireproximityprompt(prompt) end)
+    end
+end
+
+local function farm(mutationName)
+    local char = LocalPlayer.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+    pcall(function()
+        local base = Workspace.Areas.Area7.Base14
+        if not base then return end
+        hrp.CFrame = base:GetPivot() + Vector3.new(0, 3, 0)
+        task.wait(1)
+        local found = false
+        for i = 1, 6 do
+            local slot = base:FindFirstChild("Slot" .. i)
+            if slot then
+                local pad = slot:FindFirstChild("Pad")
+                if pad then
+                    for _, obj in ipairs(pad:GetDescendants()) do
+                        if obj:IsA("Model") then
+                            local mut = obj:GetAttribute("Mutation")
+                            if mut and string.lower(mut) == string.lower(mutationName) then
+                                found = true
+                                firePromptOnPad(pad, hrp)
+                                task.wait(0.2)
+                                local grass = getTP()
+                                if grass then hrp.CFrame = grass.CFrame * CFrame.new(0, 3, 0) end
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            if found then break end
+        end
+        if not found then
+            local slot1 = base:FindFirstChild("Slot1")
+            if slot1 then
+                local pad1 = slot1:FindFirstChild("Pad")
+                if pad1 then firePromptOnPad(pad1, hrp) end
+            end
+            task.wait(2)
+        end
+    end)
+    task.wait(0.5)
+end
+
+-- LOOPS
+local function loopAutoCollect()
+    while _G.BLADEX_AutoCollect do doCollect() task.wait(0.1) end
+end
+
+local function loopAutoCash()
+    while _G.BLADEX_AutoCash do doCash() task.wait(0.1) end
+end
+
+local function loopAutoSell()
+    while _G.BLADEX_AutoSell do safeInvoke("SellAllBrainrots") task.wait(1.0) end
+end
+
+local function loopAutoRebirth()
+    while _G.BLADEX_AutoRebirth do
+        local ok, res = doRebirth()
+        if ok and res then notify("Rebirth realizado!", 3) end
+        task.wait(2.0)
+    end
+end
+
+local function loopAutoUpgradeBase()
+    while _G.BLADEX_AutoUpgradeBase do safeInvoke("UpgradeBase") task.wait(0.5) end
+end
+
+local function loopAutoUpgradeSpeed()
+    while _G.BLADEX_AutoUpgradeSpeed do
+        safeInvoke("UpgradeSpeed", 1) task.wait(0.3)
+        safeInvoke("UpgradeSpeed", 2) task.wait(0.3)
+        safeInvoke("UpgradeSpeed", 3) task.wait(0.5)
+    end
+end
+
+local function loopAutoBuyFood()
+    while _G.BLADEX_AutoBuyFood do safeInvoke("BuyFood", "Celestial Feast", 1) task.wait(1.0) end
+end
+
+local function loopAutoFeedBrainrot()
+    while _G.BLADEX_AutoFeedBrainrot do feedAllBrainrots() task.wait(1.0) end
+end
+
+local function loopFarmGalaxy()
+    while _G.BLADEX_FarmGalaxy do farm("Galaxy") end
+end
+
+local function loopFarmNeon()
+    while _G.BLADEX_FarmNeon do farm("Neon") end
+end
+
+local function loopFarmDiamond()
+    while _G.BLADEX_FarmDiamond do farm("Diamond") end
+end
+
+local function loopFarmGold()
+    while _G.BLADEX_FarmGold do farm("Gold") end
+end
+
+-- UI
+local uiReady = false
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+notify("BLADEX HUD CARGANDO", 3)
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local tabFarm = Window:DrawTab({
+    Name            = "Farm",
+    Icon            = "lucide-sword",
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local secFL = tabFarm:DrawSection({ Name = "Auto Farm",      Position = "left",  Minimized = true })
+local secFR = tabFarm:DrawSection({ Name = "Farm Brainrots", Position = "right", Minimized = true })
+
+secFL:AddToggle({
+    Name = "Auto Cash", Default = false, Flag = "BLADEX_autocash",
+    Callback = function(v)
+        toggleLoop("AutoCash", v, loopAutoCash)
+        if uiReady then notify(v and "Auto Cash ON" or "Auto Cash OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto Rebirth", Default = false, Flag = "BLADEX_autorebirth",
+    Callback = function(v)
+        toggleLoop("AutoRebirth", v, loopAutoRebirth)
+        if uiReady then notify(v and "Auto Rebirth ON" or "Auto Rebirth OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto Upgrade Base", Default = false, Flag = "BLADEX_autoupgbase",
+    Callback = function(v)
+        toggleLoop("AutoUpgradeBase", v, loopAutoUpgradeBase)
+        if uiReady then notify(v and "Auto Upgrade Base ON" or "Auto Upgrade Base OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto Upgrade Speed", Default = false, Flag = "BLADEX_autoupgspeed",
+    Callback = function(v)
+        toggleLoop("AutoUpgradeSpeed", v, loopAutoUpgradeSpeed)
+        if uiReady then notify(v and "Auto Upgrade Speed ON" or "Auto Upgrade Speed OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto Sell All", Default = false, Flag = "BLADEX_autosell",
+    Callback = function(v)
+        toggleLoop("AutoSell", v, loopAutoSell)
+        if uiReady then notify(v and "Auto Sell ON" or "Auto Sell OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto BuyFood", Default = false, Flag = "BLADEX_autobuyfood",
+    Callback = function(v)
+        toggleLoop("AutoBuyFood", v, loopAutoBuyFood)
+        if uiReady then notify(v and "Auto BuyFood ON" or "Auto BuyFood OFF", 3) end
+    end
+}):SetValue(false)
+
+secFL:AddToggle({
+    Name = "Auto FeedBrainrot", Default = false, Flag = "BLADEX_autofeedbrainrot",
+    Callback = function(v)
+        toggleLoop("AutoFeedBrainrot", v, loopAutoFeedBrainrot)
+        if uiReady then notify(v and "Auto FeedBrainrot ON" or "Auto FeedBrainrot OFF", 3) end
+    end
+}):SetValue(false)
+
+secFR:AddToggle({
+    Name = "Farm Galaxy", Default = false, Flag = "BLADEX_farmgalaxy",
+    Callback = function(v)
+        toggleLoop("FarmGalaxy", v, loopFarmGalaxy)
+        if uiReady then notify(v and "Farm Galaxy ON" or "Farm Galaxy OFF", 3) end
+    end
+}):SetValue(false)
+
+secFR:AddToggle({
+    Name = "Farm Neon", Default = false, Flag = "BLADEX_farmneon",
+    Callback = function(v)
+        toggleLoop("FarmNeon", v, loopFarmNeon)
+        if uiReady then notify(v and "Farm Neon ON" or "Farm Neon OFF", 3) end
+    end
+}):SetValue(false)
+
+secFR:AddToggle({
+    Name = "Farm Diamond", Default = false, Flag = "BLADEX_farmdiamond",
+    Callback = function(v)
+        toggleLoop("FarmDiamond", v, loopFarmDiamond)
+        if uiReady then notify(v and "Farm Diamond ON" or "Farm Diamond OFF", 3) end
+    end
+}):SetValue(false)
+
+secFR:AddToggle({
+    Name = "Farm Gold", Default = false, Flag = "BLADEX_farmgold",
+    Callback = function(v)
+        toggleLoop("FarmGold", v, loopFarmGold)
+        if uiReady then notify(v and "Farm Gold ON" or "Farm Gold OFF", 3) end
+    end
+}):SetValue(false)
+
+Window:DrawCategory({ Name = "Extra" })
+
+local tabAjustes = Window:DrawTab({
+    Name = "Ajustes",
+    Icon = "settings",
+    Type = "Single",
+})
+
+local secAj = tabAjustes:DrawSection({ Name = "UI", Position = "full", Minimized = true })
+
+local themes = {
+    Default         = Color3.fromRGB(90, 110, 160),
+    ["Dark Blue"]   = Color3.fromRGB(50, 90, 200),
+    ["Dark Green"]  = Color3.fromRGB(60, 150, 90),
+    ["Purple Rose"] = Color3.fromRGB(160, 80, 160),
+    Skeet           = Color3.fromRGB(200, 60, 60),
+}
+secAj:AddDropdown({
+    Name     = "Select Theme",
+    Default  = "Default",
+    Values   = {"Default", "Dark Blue", "Dark Green", "Purple Rose", "Skeet"},
+    Callback = function(v)
+        Compkiller:ChangeHighlightColor(themes[v] or themes.Default)
+    end
+})
+
+secAj:AddColorPicker({
+    Name         = "Color Personalizado",
+    Default      = Compkiller.Colors.Toggle,
+    Transparency = 0,
+    Callback     = function(v) Compkiller:ChangeHighlightColor(v) end
+})
+
+secAj:AddToggle({
+    Name     = "Always Show Frame",
+    Default  = false,
+    Callback = function(v) pcall(function() Window.AlwaysShowTab = v end) end
+})
+
+Window:DrawConfig({
+    Name   = "Config",
+    Icon   = "folder",
+    Config = ConfigManager
+}):Init()
+
+uiReady = true
