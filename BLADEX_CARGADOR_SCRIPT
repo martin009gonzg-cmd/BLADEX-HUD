@@ -107,6 +107,16 @@ local function _BLADEX_INIT()
         [124473577469410] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block",        name = "Lucky Block Sim"},
         [99435399946069]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT",         name = "Reel a Brainrot [NEW]"},
         [134190049316507] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",   name = "Spear a Brainrots"},
+        [110290371202376] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",   name = "Adopt a Brainrot"},
+
+        -- RANURA 1 (pendiente)
+        -- [000000000000000] = {url = "", name = ""},
+
+        -- RANURA 2 (pendiente)
+        -- [000000000000000] = {url = "", name = ""},
+
+        -- RANURA 3 (pendiente)
+        -- [000000000000000] = {url = "", name = ""},
     }
 
     -- ======================== BLOQUEO DE EJECUCIÓN MÚLTIPLE ========================
