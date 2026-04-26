@@ -7,7 +7,10 @@ Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
 local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+
 local function notify(content, duration)
+    if _BLADEX_LOADING then return end
     Notifier.new({
         Title    = "BLADEX HUD",
         Content  = content,
@@ -18,14 +21,16 @@ end
 
 local ConfigManager = Compkiller:ConfigManager({
     Directory = "BLADEX-HUB",
-    Config    = "BLADEX-BrainrootUltra",
+    Config    = "BLADEX-SpearBrainrots",
 })
 
+-- === SERVICIOS ===
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace         = game:GetService("Workspace")
 local lp                = Players.LocalPlayer
 
+-- === DELAYS ===
 local DELAY_BETWEEN_SLOTS_COLLECT = 0.05
 local DELAY_BETWEEN_SLOTS_PICKUP  = 0.05
 local DELAY_BETWEEN_SLOTS_UPGRADE = 0.005
@@ -37,6 +42,7 @@ local CYCLE_WAIT_REBIRTH          = 2
 local CYCLE_WAIT_POWER            = 1
 local CYCLE_WAIT_CARRY            = 2
 
+-- === REMOTES FARM ===
 local mainRemote    = ReplicatedStorage:FindFirstChild("RF/Plot.PlotAction", true)
 local baseRemote    = ReplicatedStorage:FindFirstChild("RE/Plot.UpgradeBase", true)
 local remFuncs      = ReplicatedStorage:FindFirstChild("RemoteFunctions", true)
@@ -44,6 +50,7 @@ local rebirthRemote = remFuncs and remFuncs:FindFirstChild("Rebirth")
 local speedRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeSpeed")
 local carryRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeCarry")
 
+-- === UUID ===
 local function detectUUID()
     for k, v in pairs(lp:GetAttributes()) do
         if type(v) == "string" and v:match("%x+%-%x+%-%x+%-%x+%-%x+") then return v end
@@ -60,6 +67,7 @@ local function detectUUID()
 end
 local currentUUID = detectUUID()
 
+-- === ACCIONES FARM ===
 local function collectSlot(slot)
     if not mainRemote or not currentUUID then return false end
     return pcall(mainRemote.InvokeServer, mainRemote, "Collect Money", currentUUID, tostring(slot))
@@ -104,6 +112,7 @@ local function runSlots(actionFunc, delay)
     end
 end
 
+-- === REMOTES SPEAR ===
 local char = lp.Character or lp.CharacterAdded:Wait()
 local hrp  = char:WaitForChild("HumanoidRootPart")
 
@@ -131,26 +140,42 @@ for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
     end
 end
 
-local waterParts = {}
-for _, obj in ipairs(Workspace:GetDescendants()) do
-    if obj:IsA("BasePart") and obj.Name:lower():find("water") then
-        table.insert(waterParts, obj)
-    end
-end
-
+-- === CONFIG SPEAR ===
 local spearConfig = {
-    enabled   = false,
-    interval  = 20,
-    spearName = "Inferno Spear",
+    enabled  = false,
+    interval = 20,
     force     = 0.9785663485527039,
     direction = Vector3.new(1, 0, 5.116264501631423e-15),
 }
 
+local function detectSpears()
+    local found = {}
+    local containers = { lp.Backpack, lp.Character }
+    for _, container in ipairs(containers) do
+        if container then
+            for _, tool in ipairs(container:GetChildren()) do
+                if tool:IsA("Tool") then
+                    local nameLower = tool.Name:lower()
+                    if nameLower:find("spear") or nameLower:find("lanza") then
+                        table.insert(found, tool.Name)
+                    end
+                end
+            end
+        end
+    end
+    return found
+end
+
 local function doAutoThrow()
     if not throwRemote then return end
-    pcall(function()
-        throwRemote:FireServer(spearConfig.force, spearConfig.direction, spearConfig.spearName)
-    end)
+    local spears = detectSpears()
+    if #spears == 0 then return end
+    for _, spearName in ipairs(spears) do
+        pcall(function()
+            throwRemote:FireServer(spearConfig.force, spearConfig.direction, spearName)
+        end)
+        task.wait(0.1)
+    end
 end
 
 task.spawn(function()
@@ -174,6 +199,7 @@ if fishBiteRemote then
     end)
 end
 
+-- === LOOP MANAGER ===
 local activeThreads = {}
 local function startLoop(name, fn)
     if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
@@ -191,6 +217,7 @@ local function loopRebirth() while true do doRebirth() task.wait(CYCLE_WAIT_REBI
 local function loopPower()   while true do doPowerUpgrades() task.wait(CYCLE_WAIT_POWER) end end
 local function loopCarry()   while true do doCarryUpgrade() task.wait(CYCLE_WAIT_CARRY) end end
 
+-- === UI ===
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
 
 local Window = Compkiller.new({
@@ -202,48 +229,80 @@ local Window = Compkiller.new({
 })
 Window.Minimized = true
 
+-- === TAB: AUTO FARM ===
 local farmTab = Window:DrawTab({
     Name            = "Auto Farm",
-    Icon            = Compkiller.Logo,
+    Icon            = "lucide-sword",
     Type            = "Double",
     EnableScrolling = true,
 })
 
-local SecLeft  = farmTab:DrawSection({ Name = "Auto Farm",   Position = "left",  Minimized = false })
-local SecRight = farmTab:DrawSection({ Name = "Auto Extras", Position = "right", Minimized = false })
+local SecLeft  = farmTab:DrawSection({ Name = "Auto Farm",   Position = "left",  Minimized = true })
+local SecRight = farmTab:DrawSection({ Name = "Auto Extras", Position = "right", Minimized = true })
 
-SecLeft:AddToggle({
-    Name = "Auto Spear", Default = false, Flag = "BLADEX_autospear",
-    Callback = function(v)
-        spearConfig.enabled = v
-    end
-})
+SecLeft:AddToggle({ Name = "Auto Spear", Default = false, Flag = "BLADEX_autospear", Risky = false,
+    Callback = function(v) spearConfig.enabled = v end })
 
-SecLeft:AddToggle({ Name = "Auto Collect Money", Default = false, Flag = "BLADEX_collect",
+SecLeft:AddToggle({ Name = "Auto Collect Money", Default = false, Flag = "BLADEX_collect", Risky = false,
     Callback = function(v) if v then startLoop("Collect", loopCollect) else stopLoop("Collect") end end })
 
-SecLeft:AddToggle({ Name = "Auto Upgrade Brainrot", Default = false, Flag = "BLADEX_upgrade",
+SecLeft:AddToggle({ Name = "Auto Upgrade Brainrot", Default = false, Flag = "BLADEX_upgrade", Risky = false,
     Callback = function(v) if v then startLoop("Upgrade", loopUpgrade) else stopLoop("Upgrade") end end })
 
-SecLeft:AddToggle({ Name = "Auto Rebirth", Default = false, Flag = "BLADEX_rebirth",
+SecLeft:AddToggle({ Name = "Auto Rebirth", Default = false, Flag = "BLADEX_rebirth", Risky = false,
     Callback = function(v) if v then startLoop("Rebirth", loopRebirth) else stopLoop("Rebirth") end end })
 
-SecLeft:AddToggle({ Name = "Auto Power Upgrades", Default = false, Flag = "BLADEX_power",
+SecLeft:AddToggle({ Name = "Auto Power Upgrades", Default = false, Flag = "BLADEX_power", Risky = false,
     Callback = function(v) if v then startLoop("Power", loopPower) else stopLoop("Power") end end })
 
-SecRight:AddToggle({ Name = "Auto Upgrade Base", Default = false, Flag = "BLADEX_base",
+SecRight:AddToggle({ Name = "Auto Upgrade Base", Default = false, Flag = "BLADEX_base", Risky = false,
     Callback = function(v) if v then startLoop("Base", loopBase) else stopLoop("Base") end end })
 
-SecRight:AddToggle({ Name = "Auto Carry", Default = false, Flag = "BLADEX_carry",
+SecRight:AddToggle({ Name = "Auto Carry", Default = false, Flag = "BLADEX_carry", Risky = false,
     Callback = function(v) if v then startLoop("Carry", loopCarry) else stopLoop("Carry") end end })
 
-SecRight:AddToggle({ Name = "Auto Pickup Brainrot", Default = false, Flag = "BLADEX_pickup",
+SecRight:AddToggle({ Name = "Auto Pickup Brainrot", Default = false, Flag = "BLADEX_pickup", Risky = false,
     Callback = function(v) if v then startLoop("Pickup", loopPickup) else stopLoop("Pickup") end end })
 
-Window:DrawCategory({ Name = "Misc" })
+Window:DrawCategory({ Name = "Extra" })
+
+-- === TAB: AJUSTES ===
+local ajustesTab = Window:DrawTab({
+    Name = "Ajustes",
+    Icon = "settings",
+    Type = "Single",
+})
+
+local SecSpear = ajustesTab:DrawSection({ Name = "Spear Config", Position = "full", Minimized = true })
+
+SecSpear:AddSlider({ Name = "Intervalo Spear (s)", Min = 5, Max = 60, Default = 20, Risky = false,
+    Callback = function(v) spearConfig.interval = v end })
+
+local SecUI = ajustesTab:DrawSection({ Name = "UI", Position = "full", Minimized = true })
+
+local themes = {
+    Default        = Color3.fromRGB(90, 110, 160),
+    ["Dark Blue"]  = Color3.fromRGB(50, 90, 200),
+    ["Dark Green"] = Color3.fromRGB(60, 150, 90),
+    ["Purple Rose"]= Color3.fromRGB(160, 80, 160),
+    Skeet          = Color3.fromRGB(200, 60, 60),
+}
+SecUI:AddDropdown({
+    Name    = "Tema",
+    Default = "Default",
+    Values  = { "Default", "Dark Blue", "Dark Green", "Purple Rose", "Skeet" },
+    Risky   = false,
+    Callback = function(v) Compkiller:ChangeHighlightColor(themes[v] or themes.Default) end
+})
+
+SecUI:AddToggle({ Name = "Always Show Frame", Default = false, Risky = false,
+    Callback = function(v) pcall(function() Window.AlwaysShowTab = v end) end })
 
 Window:DrawConfig({
     Name   = "Config",
     Icon   = "folder",
     Config = ConfigManager
 }):Init()
+
+_BLADEX_LOADING = false
+notify("BLADEX HUD CARGANDO", 5)
