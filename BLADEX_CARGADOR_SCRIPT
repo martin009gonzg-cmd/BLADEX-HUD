@@ -82,7 +82,7 @@ local function _BLADEX_INIT()
         [99435399946069]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/REEL_A_BRAINROT",           name = "Reel a Brainrot [NEW]"},
         [134190049316507] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",     name = "Spear a Brainrots"},
         [110290371202376] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",     name = "Adopt a Brainrot"},
-        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Towerp", name = "Brainrot Morph Tower"},
+        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower", name = "Brainrot Morph Tower"},
 
         -- RANURA 2 (pendiente)
         -- [000000000000000] = {url = "", name = ""},
@@ -104,7 +104,7 @@ local function _BLADEX_INIT()
 
     if not gameData then
         warn(string.format("[BLADEX] ID %s no configurado", tostring(currentId)))
-        notify("Error", "Juego no soportado", 4)
+        notify("Juego no soportado", "UID: " .. tostring(currentId), 6)
         _getgenv()._BLADEX_LOADING = nil
         return
     end
@@ -154,15 +154,20 @@ local function _BLADEX_INIT()
     if scriptCode then
         local mainFunc, err = loadstring(scriptCode)
         if mainFunc then
+            local env = getfenv(mainFunc)
+            env.Compkiller = _getgenv().Compkiller
+            setfenv(mainFunc, env)
             local success, execErr = _pcall(mainFunc)
             if not success then
-                notify("Error", "Error en ejecución: " .. tostring(execErr), 6)
+                notify("No se pudo ejecutar", gameData.name .. " | UID: " .. tostring(currentId), 6)
+            else
+                notify("Cargado correctamente", gameData.name .. " | UID: " .. tostring(currentId), 5)
             end
         else
-            notify("Error", "Script inválido: " .. tostring(err), 6)
+            notify("Script invalido", gameData.name .. " | UID: " .. tostring(currentId), 6)
         end
     else
-        notify("Error", "No se pudo descargar el script del juego", 5)
+        notify("No se pudo ejecutar", gameData.name .. " | UID: " .. tostring(currentId), 5)
     end
 
     -- LIMPIEZA
