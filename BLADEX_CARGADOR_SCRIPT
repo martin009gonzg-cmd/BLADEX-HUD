@@ -110,7 +110,7 @@ local function _BLADEX_INIT()
         [110290371202376] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",   name = "Adopt a Brainrot"},
 
         -- RANURA 1 (pendiente)
-        -- [000000000000000] = {url = "", name = ""},
+        -- [000000000000000] = {url = "", name = "Brainrot Morph Tower"},
 
         -- RANURA 2 (pendiente)
         -- [000000000000000] = {url = "", name = ""},
