@@ -1,16 +1,32 @@
--- Protección única ejecución
+local Compkiller = getgenv().Compkiller
+if not Compkiller then warn("[BLADEX] Ejecuta el loader primero.") return end
+
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+local function notify(content, duration)
+    if _BLADEX_LOADING then return end
+    Notifier.new({ Title="BLADEX HUD", Content=content, Duration=duration or 4, Icon=Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-ReelBrainrot",
+})
+
 local CoreGui = game:GetService("CoreGui")
 if CoreGui:FindFirstChild("BLADEX_HUB") then
     CoreGui:FindFirstChild("BLADEX_HUB"):Destroy()
     task.wait(0.2)
 end
 local Marker = Instance.new("Folder")
-Marker.Name = "BLADEX_HUB"
+Marker.Name  = "BLADEX_HUB"
 Marker.Parent = CoreGui
 
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
-local TweenService      = game:GetService("TweenService")
 local VirtualUser       = game:GetService("VirtualUser")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace         = game:GetService("Workspace")
@@ -20,9 +36,8 @@ local Char      = LP.Character or LP.CharacterAdded:Wait()
 local Hum       = Char:WaitForChild("Humanoid")
 local playerGui = LP:WaitForChild("PlayerGui")
 
--- LÓGICA AUTO LUCKY BLOCKS + POCIONES
-local Activo      = false
-local AntiAFKConn = nil
+local Activo       = false
+local AntiAFKConn  = nil
 local autoSubmitOn = false
 
 local BRAINROT_SET = {
@@ -36,7 +51,7 @@ local BRAINROT_SET = {
     ["epic"]=true,["rare"]=true,["uncommon"]=true,["normal:"]=true,
     ["golden"]=true,["diamond"]=true,["rainbow"]=true,["galaxy"]=true,["lava"]=true,
 }
-local BRAINROT_KEYS = {} -- lista para búsqueda substring (nombres compuestos)
+local BRAINROT_KEYS = {}
 for k in pairs(BRAINROT_SET) do BRAINROT_KEYS[#BRAINROT_KEYS+1] = k end
 
 local function EsBrainrot(name)
@@ -46,21 +61,20 @@ local function EsBrainrot(name)
     for i = 1, #BRAINROT_KEYS do
         if n:find(BRAINROT_KEYS[i], 1, true) then return true end
     end
-    if n:match("^brainrot%d") then return true end
-    return false
+    return n:match("^brainrot%d") ~= nil
 end
 
 local ITEM_CONFIG = {
-    { key="money_potion",  label="Money Potion",  on=true,
-      check = function(n) return n == "moneypotion1" or n == "moneypotion2" or n == "moneypotion3" end },
-    { key="luck_potion",   label="Lucky Potion",  on=true,
-      check = function(n) return n == "luckpotion1" or n == "luckpotion2" or n == "luckpotion3" end },
-    { key="heavy_bobber",  label="Heavy Bobber",  on=true,
-      check = function(n) return n:find("heavybobber") or n:find("heavy bobber") end },
-    { key="light_bobber",  label="Light Bobber",  on=true,
-      check = function(n) return n:find("lightbobber") or n:find("light bobber") end },
-    { key="lucky_blocks",  label="Lucky Blocks",  on=true,
-      check = function(n) if n:find("charm") then return false end return n:find("block") or n:find("bloque") end },
+    { key="money_potion", label="Money Potion", on=true,
+      check=function(n) return n=="moneypotion1" or n=="moneypotion2" or n=="moneypotion3" end },
+    { key="luck_potion",  label="Lucky Potion", on=true,
+      check=function(n) return n=="luckpotion1" or n=="luckpotion2" or n=="luckpotion3" end },
+    { key="heavy_bobber", label="Heavy Bobber", on=true,
+      check=function(n) return n:find("heavybobber") or n:find("heavy bobber") end },
+    { key="light_bobber", label="Light Bobber", on=true,
+      check=function(n) return n:find("lightbobber") or n:find("light bobber") end },
+    { key="lucky_blocks", label="Lucky Blocks", on=true,
+      check=function(n) if n:find("charm") then return false end return n:find("block") or n:find("bloque") end },
 }
 
 local function EsItemAAbrir(tool)
@@ -131,30 +145,29 @@ local function BucleLucky()
     end
 end
 
--- AUTO SELLER
 local SPEEDS = { { label="LARGO", secs=60 }, { label="NORMAL", secs=40 } }
 local RARS = {
-    { name="Uncommon",  on=true  },
-    { name="Rare",      on=true  },
-    { name="Epic",      on=true  },
-    { name="Legendary", on=true  },
-    { name="Mythic",    on=true  },
-    { name="Godly",     on=true  },
-    { name="Secret",    on=true  },
-    { name="Divine",    on=true  },
+    { name="Uncommon", on=true }, { name="Rare",      on=true },
+    { name="Epic",     on=true }, { name="Legendary", on=true },
+    { name="Mythic",   on=true }, { name="Godly",     on=true },
+    { name="Secret",   on=true }, { name="Divine",    on=true },
 }
 
-local selSpd   = 0
-local timerVal = 10
-local autoSell = false
-local selling  = false
+local selSpd     = 0
+local timerVal   = 10
+local autoSell   = false
+local selling    = false
 local customSecs = 10
 
 local RH
-task.spawn(function() RH = ReplicatedStorage:WaitForChild("RemoteHandler", 15) end)
+local _Remote
+task.spawn(function()
+    RH = ReplicatedStorage:WaitForChild("RemoteHandler", 15)
+    if RH then _Remote = RH:WaitForChild("Plot", 15) end
+end)
 local function getR(n) return RH and RH:FindFirstChild(n) end
 
-local _sellCache = { arr = {}, map = {}, dirty = true }
+local _sellCache = { arr={}, map={}, dirty=true }
 local function invalidarSellCache() _sellCache.dirty = true end
 
 local function doSell()
@@ -162,7 +175,6 @@ local function doSell()
     selling = true
     local sm = getR("SellMultiple")
     if not sm then selling = false return end
-
     if _sellCache.dirty then
         local arr, map = {}, {}
         for i = 1, #RARS do
@@ -174,10 +186,8 @@ local function doSell()
         _sellCache.map   = map
         _sellCache.dirty = false
     end
-
     local arr, map = _sellCache.arr, _sellCache.map
     if #arr == 0 then selling = false return end
-
     pcall(sm.FireServer, sm, map)         task.wait(0.12)
     pcall(sm.FireServer, sm, arr)         task.wait(0.12)
     pcall(sm.FireServer, sm, unpack(arr)) task.wait(0.12)
@@ -200,22 +210,21 @@ RunService.Heartbeat:Connect(function(dt)
     end
 end)
 
--- AUTO BUY
 local autoBuyOn       = false
 local _autoBuyRunning = false
 local autoBuyGuiConn  = nil
 
 local SHOP_CONFIG = {
-    { key="shop_money",   label="Money Potion",     on=true,
-      check = function(n) return n == "moneypotion1" or n == "moneypotion2" or n == "moneypotion3" end },
-    { key="shop_lucky",   label="Lucky Potion",     on=true,
-      check = function(n) return n == "luckpotion1" or n == "luckpotion2" or n == "luckpotion3" end },
-    { key="shop_bobber",  label="Light Bobber",     on=true,
-      check = function(n) return n == "lightbobber" end },
-    { key="shop_brainrot",label="Brainrot Offer",   on=false,
-      check = function(n) return n == "brainrotoffer" end },
-    { key="shop_rod",     label="Kraken's Rod",     on=false,
-      check = function(n) return n == "krakensrod" or n:find("krakenrod") end },
+    { key="shop_money",    label="Money Potion",   on=true,
+      check=function(n) return n=="moneypotion1" or n=="moneypotion2" or n=="moneypotion3" end },
+    { key="shop_lucky",    label="Lucky Potion",   on=true,
+      check=function(n) return n=="luckpotion1" or n=="luckpotion2" or n=="luckpotion3" end },
+    { key="shop_bobber",   label="Light Bobber",   on=true,
+      check=function(n) return n=="lightbobber" end },
+    { key="shop_brainrot", label="Brainrot Offer", on=false,
+      check=function(n) return n=="brainrotoffer" end },
+    { key="shop_rod",      label="Kraken's Rod",   on=false,
+      check=function(n) return n=="krakensrod" or n:find("krakenrod") end },
 }
 
 local function itemDeseado(name)
@@ -232,63 +241,36 @@ local function comprarViaMerchantRemote()
     local rfBuy      = rh:FindFirstChild("KrakenMerchantBuy")
     local rfSnapshot = rh:FindFirstChild("KrakenMerchantSnapshot")
     if not rfBuy or not rfSnapshot then return end
-
     local ok, snap = pcall(function() return rfSnapshot:InvokeServer() end)
-    if not ok or not snap then return end
-    if not snap.offers then return end
-
-    -- snap.currency es tabla: { balance=13128673, statName="KrakenKey", displayName="Kraken Coins" }
+    if not ok or not snap or not snap.offers then return end
     local monedas = snap.currency and snap.currency.balance or 0
-    print("[AutoShop Kraken] Monedas: " .. tostring(monedas))
-
     for i, offer in ipairs(snap.offers) do
         if not autoBuyOn then break end
-        local id        = offer.id          -- ej: "LuckPotion1" (con mayuscula)
-        local cost      = offer.cost or 0
-        local stock     = offer.stock       -- numero, ej: 5
-        local purchased = offer.purchased   -- boolean: false = no comprado
-        local name      = tostring(id or ""):lower()  -- lowercase para comparar
-
+        local id   = offer.id
+        local cost = offer.cost or 0
+        local name = tostring(id or ""):lower()
         if not itemDeseado(name) then continue end
-
-        local hayStock   = stock and stock > 0
-        local noComprado = purchased == false
-        local puedePagar = monedas >= cost
-
-        if hayStock and noComprado and puedePagar then
-            print("[AutoShop Kraken] Comprando: " .. tostring(id))
-            -- KrakenMerchantBuy espera el id del item (string original con mayusculas)
+        if offer.stock and offer.stock > 0 and offer.purchased == false and monedas >= cost then
             local ok1, r1 = pcall(function() return rfBuy:InvokeServer(id) end)
             if ok1 and r1 then
                 monedas = monedas - cost
-                print("[AutoShop Kraken] OK: " .. tostring(id))
             else
-                -- fallback: por indice numerico
                 local ok2, r2 = pcall(function() return rfBuy:InvokeServer(i) end)
-                if ok2 and r2 then
-                    monedas = monedas - cost
-                    print("[AutoShop Kraken] OK (idx): " .. tostring(id))
-                else
-                    print("[AutoShop Kraken] Fallo: " .. tostring(id))
-                end
+                if ok2 and r2 then monedas = monedas - cost end
             end
             task.wait(0.5)
         end
     end
 end
 
-
-
-local function _cicloAutoBuy()
-    while autoBuyOn and _autoBuyRunning do
-        comprarViaMerchantRemote()
-        task.wait(3)
-    end
-end
-
 local function startAutoBuy()
     _autoBuyRunning = true
-    task.spawn(_cicloAutoBuy)
+    task.spawn(function()
+        while autoBuyOn and _autoBuyRunning do
+            comprarViaMerchantRemote()
+            task.wait(3)
+        end
+    end)
 end
 
 local function stopAutoBuy()
@@ -296,25 +278,19 @@ local function stopAutoBuy()
     if autoBuyGuiConn then autoBuyGuiConn:Disconnect(); autoBuyGuiConn = nil end
 end
 
--- AUTO SUBMIT (v2 - con snapshot y teleport por slot)
 local _submitRunning = false
 
 local SUBMIT_RARS = {
-    { name="Epic",      on=true  },
-    { name="Legendary", on=true  },
-    { name="Mythic",    on=true  },
-    { name="Godly",     on=true  },
-    { name="Secret",    on=true  },
-    { name="Divine",    on=true  },
+    { name="Epic",      on=true }, { name="Legendary", on=true },
+    { name="Mythic",    on=true }, { name="Godly",     on=true },
+    { name="Secret",    on=true }, { name="Divine",    on=true },
 }
 
--- Posiciones exactas de cada slot (Kraken Event)
 local SLOT_POS = {
-    Vector3.new(-144.004, 2, -259.281),  -- Brainrot1
-    Vector3.new(-136.004, 2, -259.281),  -- Brainrot2
-    Vector3.new(-128.004, 2, -259.281),  -- Brainrot3
+    Vector3.new(-144.004, 2, -259.281),
+    Vector3.new(-136.004, 2, -259.281),
+    Vector3.new(-128.004, 2, -259.281),
 }
-local SLOT_PP = { "Brainrot1", "Brainrot2", "Brainrot3" }
 
 local NO_BRAINROT = {
     "potion","pocion","block","bloque","charm",
@@ -324,12 +300,10 @@ local NO_BRAINROT = {
 
 local function esBrainrotValido(tool)
     local n = tool.Name:lower()
-    -- Solo aceptar tools cuyo nombre empiece con "brainrot"
     if not n:match("^brainrot") then return false end
     for _, w in ipairs(NO_BRAINROT) do
         if n:find(w, 1, true) then return false end
     end
-    -- Filtrar por rareza si está configurado
     local rarity = tool:GetAttribute("rarity")
     if rarity then
         for _, r in ipairs(SUBMIT_RARS) do
@@ -365,15 +339,12 @@ local function getSlots()
     if not rfSnap then return nil end
     local ok, snap = pcall(function() return rfSnap:InvokeServer() end)
     if not ok or not snap then return nil end
-    -- snap.slots = { [1]={submitted=false, rewardCoins=0, slot=1}, [2]=..., [3]=... }
     return snap.slots or nil
 end
 
 local function slotNecesita(slots, i)
     local s = slots[i]
-    if not s then return false end
-    -- submitted=false significa que el slot esta vacio y necesita brainrot
-    return s.submitted == false
+    return s and s.submitted == false
 end
 
 local function equipar(tool)
@@ -391,59 +362,35 @@ local function submitSlot(slotIndex, brainrotTool)
     if not c then return false end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return false end
-
-    -- Obtener el id completo del brainrot desde sus atributos
-    -- Ej: "Brainrot84:Normal:2:666399:9253445601"
-    local brainrotId = brainrotTool and brainrotTool:GetAttribute("id")
-    if not brainrotId then
-        brainrotId = brainrotTool and brainrotTool.Name
-    end
-
+    local brainrotId = (brainrotTool and brainrotTool:GetAttribute("id")) or (brainrotTool and brainrotTool.Name)
     local posOriginal = hrp.CFrame
-    local posSlot     = SLOT_POS[slotIndex]
-
-    -- Teleport al slot
-    hrp.CFrame = CFrame.new(posSlot)
+    hrp.CFrame = CFrame.new(SLOT_POS[slotIndex])
     task.wait(0.3)
-
-    -- KrakenSacrificeSubmit(slotNumber, brainrotId)
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
     local disparado = false
     if rh then
         local submitRF = rh:FindFirstChild("KrakenSacrificeSubmit")
         if submitRF then
-            local ok, result = pcall(function()
-                return submitRF:InvokeServer(slotIndex, brainrotId)
-            end)
-            print("[AutoSubmit] Submit slot " .. slotIndex .. " id=" .. tostring(brainrotId) .. " ok=" .. tostring(ok) .. " result=" .. tostring(result))
-            if ok and result then
-                disparado = true
-            end
+            local ok, result = pcall(function() return submitRF:InvokeServer(slotIndex, brainrotId) end)
+            if ok and result then disparado = true end
         end
     end
-
-    -- Fallback: ProximityPrompt mas cercano si el remote fallo
     if not disparado then
         local bestPP, bestDist = nil, 20
         for _, d in ipairs(Workspace:GetDescendants()) do
             if d:IsA("ProximityPrompt") then
                 local part = d.Parent
                 if part and part:IsA("BasePart") then
-                    local dist = (part.Position - posSlot).Magnitude
-                    if dist < bestDist then
-                        bestDist = dist
-                        bestPP   = d
-                    end
+                    local dist = (part.Position - SLOT_POS[slotIndex]).Magnitude
+                    if dist < bestDist then bestDist = dist; bestPP = d end
                 end
             end
         end
         if bestPP then
             pcall(function() fireproximityprompt(bestPP) end)
             disparado = true
-            print("[AutoSubmit] PP fallback slot " .. slotIndex)
         end
     end
-
     task.wait(0.3)
     hrp.CFrame = posOriginal
     return disparado
@@ -464,11 +411,8 @@ local function hacerClaim()
             pcall(function() d:activate() end)
         end
     end
-    print("[AutoSubmit] Claim ejecutado")
 end
 
--- Detectar reset leyendo el snapshot del Kraken
--- snap tiene: roundCooldown=180, nextRoundAt=0, nextSubmitAt=0
 local function getResetSegundos()
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
     if not rh then return nil end
@@ -476,123 +420,66 @@ local function getResetSegundos()
     if not rfSnap then return nil end
     local ok, snap = pcall(function() return rfSnap:InvokeServer() end)
     if not ok or not snap then return nil end
-
-    -- nextRoundAt es timestamp del servidor cuando inicia la proxima ronda
     if snap.nextRoundAt and snap.nextRoundAt > 0 and snap.serverNow then
         local remaining = snap.nextRoundAt - snap.serverNow
         if remaining > 0 then return remaining end
     end
-    -- roundCooldown es el cooldown fijo entre rondas (180s)
-    if snap.roundCooldown and snap.roundCooldown > 0 then
-        return snap.roundCooldown
-    end
-    return 185  -- fallback fijo
+    return (snap.roundCooldown and snap.roundCooldown > 0) and snap.roundCooldown or 185
 end
 
 local function esperarReset()
-    print("[AutoSubmit] Esperando reset...")
     local intentos = 0
     while autoSubmitOn and _submitRunning do
         local secs = getResetSegundos()
-        if secs and secs > 0 then
-            print("[AutoSubmit] Reset en " .. math.floor(secs) .. "s")
-            -- Esperar con margen de 5s
-            task.wait(secs + 5)
-            print("[AutoSubmit] Reset completado, nueva ronda!")
-            return
-        end
+        if secs and secs > 0 then task.wait(secs + 5) return end
         intentos = intentos + 1
-        -- Si no detectamos timer después de 10 intentos, esperar 3 min fijo
-        if intentos >= 10 then
-            print("[AutoSubmit] Timer no detectado, esperando 185s...")
-            task.wait(185)
-            return
-        end
+        if intentos >= 10 then task.wait(185) return end
         task.wait(3)
-    end
-end
-
-local function _cicloSubmit()
-    while autoSubmitOn and _submitRunning do
-        local slots = getSlots()
-        if not slots then
-            print("[AutoSubmit] Sin snapshot, reintentando...")
-            task.wait(3)
-            continue
-        end
-
-        local pendientes = 0
-        for i = 1, 3 do
-            if slotNecesita(slots, i) then pendientes = pendientes + 1 end
-        end
-
-        print("[AutoSubmit] Slots pendientes: " .. pendientes)
-
-        if pendientes == 0 then
-            print("[AutoSubmit] Todos listos, haciendo Claim...")
-            hacerClaim()
-            task.wait(1)
-            hacerClaim() -- doble intento
-            esperarReset()
-            continue
-        end
-
-        for i = 1, 3 do
-            if not autoSubmitOn or not _submitRunning then break end
-
-            local slotsActuales = getSlots()
-            if not slotsActuales then task.wait(1) break end
-            if not slotNecesita(slotsActuales, i) then
-                print("[AutoSubmit] Slot " .. i .. " ya ocupado, saltando")
-                continue
-            end
-
-            local br = getBrainrotParaSubmit()
-            if not br then
-                -- Fallback: usar cualquier brainrot sin importar rareza
-                print("[AutoSubmit] Sin brainrot de rareza seleccionada, buscando cualquiera...")
-                local bp = LP:FindFirstChildOfClass("Backpack")
-                if bp then
-                    for _, t in ipairs(bp:GetChildren()) do
-                        if t:IsA("Tool") then
-                            local n = t.Name:lower()
-                            local esMalo = false
-                            for _, w in ipairs(NO_BRAINROT) do
-                                if n:find(w, 1, true) then esMalo = true; break end
-                            end
-                            if not esMalo then br = t; break end
-                        end
-                    end
-                end
-                if not br then
-                    print("[AutoSubmit] Sin brainrots disponibles, esperando 10s...")
-                    task.wait(10)
-                    break
-                end
-                print("[AutoSubmit] Usando fallback: " .. br.Name)
-            end
-
-            print("[AutoSubmit] Slot " .. i .. " -> " .. br.Name)
-            equipar(br)
-            task.wait(0.2)
-
-            local ok = submitSlot(i, br)
-            print("[AutoSubmit] Slot " .. i .. (ok and " OK" or " fallo"))
-
-            -- submitCooldown del Kraken = 5 segundos entre slots
-            if i < 3 then
-                print("[AutoSubmit] Cooldown 6s antes del siguiente slot...")
-                task.wait(6)
-            end
-        end
-
-        task.wait(2)
     end
 end
 
 local function startAutoSubmit()
     _submitRunning = true
-    task.spawn(_cicloSubmit)
+    task.spawn(function()
+        while autoSubmitOn and _submitRunning do
+            local slots = getSlots()
+            if not slots then task.wait(3) continue end
+            local pendientes = 0
+            for i = 1, 3 do if slotNecesita(slots, i) then pendientes = pendientes + 1 end end
+            if pendientes == 0 then
+                hacerClaim() task.wait(1) hacerClaim()
+                esperarReset()
+                continue
+            end
+            for i = 1, 3 do
+                if not autoSubmitOn or not _submitRunning then break end
+                local fresh = getSlots()
+                if not fresh then task.wait(1) break end
+                if not slotNecesita(fresh, i) then continue end
+                local br = getBrainrotParaSubmit()
+                if not br then
+                    local bp = LP:FindFirstChildOfClass("Backpack")
+                    if bp then
+                        for _, t in ipairs(bp:GetChildren()) do
+                            if t:IsA("Tool") then
+                                local n = t.Name:lower()
+                                local esMalo = false
+                                for _, w in ipairs(NO_BRAINROT) do
+                                    if n:find(w, 1, true) then esMalo = true break end
+                                end
+                                if not esMalo then br = t break end
+                            end
+                        end
+                    end
+                    if not br then task.wait(10) break end
+                end
+                equipar(br) task.wait(0.2)
+                submitSlot(i, br)
+                if i < 3 then task.wait(6) end
+            end
+            task.wait(2)
+        end
+    end)
 end
 
 local function stopAutoSubmit()
@@ -600,41 +487,28 @@ local function stopAutoSubmit()
     autoSubmitOn   = false
 end
 
--- BRAINROT HIDER
 local secretHiderOn = false
 local HIDER_RARS = {
-    { name="Uncommon",  on=true  },
-    { name="Rare",      on=true  },
-    { name="Epic",      on=true  },
-    { name="Legendary", on=true  },
-    { name="Mythic",    on=true  },
-    { name="Godly",     on=true  },
-    { name="Secret",    on=true  },
-    { name="Divine",    on=true  },
+    { name="Uncommon", on=true }, { name="Rare",      on=true },
+    { name="Epic",     on=true }, { name="Legendary", on=true },
+    { name="Mythic",   on=true }, { name="Godly",     on=true },
+    { name="Secret",   on=true }, { name="Divine",    on=true },
+}
+local HIDER_MAP = {
+    uncommon=1, rare=2,   epic=3, legendary=4,
+    mythic=5,   godly=5, divine=6, secret=7,
 }
 
-local HIDER_MAP = {}
-HIDER_MAP["uncommon"]=1 HIDER_MAP["rare"]=2 HIDER_MAP["epic"]=3
-HIDER_MAP["legendary"]=4 HIDER_MAP["mythic"]=5 HIDER_MAP["godly"]=5
-HIDER_MAP["divine"]=6 HIDER_MAP["secret"]=7
-
-local function normText(t)
-    if not t or t == "" then return nil end
-    return t:lower():gsub("%s+","")
-end
-
 local function debeOcultar(texto)
-    local k = normText(texto)
-    if not k then return false end
+    if not texto or texto == "" then return false end
+    local k = texto:lower():gsub("%s+","")
     local idx = HIDER_MAP[k]
-    if not idx then return false end
-    return HIDER_RARS[idx].on
+    return idx and HIDER_RARS[idx].on or false
 end
 
-local shConns        = {}
-local shGuiConn      = nil
-local ocultados      = setmetatable({}, {__mode="k"})
--- Descendientes que ya existían en cada GUI antes de activar → no tocarlos
+local shConns           = {}
+local shGuiConn         = nil
+local ocultados         = setmetatable({}, {__mode="k"})
 local descPreExistentes = {}
 
 local function ocultarFrame(frame)
@@ -650,16 +524,11 @@ local function procesarLabel(label)
     if not debeOcultar(label.Text) then return end
     if descPreExistentes[label] then return end
     local p = label.Parent
-    if p and p.Name:lower():match("^brainrot") then
-        ocultarFrame(p)
-        return
-    end
+    if p and p.Name:lower():match("^brainrot") then ocultarFrame(p) return end
     local obj = label.Parent
     for _ = 1, 8 do
         if not obj or not obj:IsA("GuiObject") then break end
-        if obj.Name:lower():match("^brainrot") and obj:IsA("Frame") then
-            ocultarFrame(obj); return
-        end
+        if obj.Name:lower():match("^brainrot") and obj:IsA("Frame") then ocultarFrame(obj) return end
         obj = obj.Parent
     end
 end
@@ -673,8 +542,7 @@ local function suscribirGui(gui, esNueva)
         end
     end
     shConns[gui] = gui.DescendantAdded:Connect(function(obj)
-        if not secretHiderOn then return end
-        if obj:IsA("TextLabel") then procesarLabel(obj) end
+        if secretHiderOn and obj:IsA("TextLabel") then procesarLabel(obj) end
     end)
 end
 
@@ -682,15 +550,12 @@ local function startSecretHider()
     descPreExistentes = {}
     for _, gui in ipairs(playerGui:GetChildren()) do
         if gui:IsA("ScreenGui") then
-            for _, desc in ipairs(gui:GetDescendants()) do
-                descPreExistentes[desc] = true
-            end
+            for _, desc in ipairs(gui:GetDescendants()) do descPreExistentes[desc] = true end
             suscribirGui(gui, false)
         end
     end
     shGuiConn = playerGui.ChildAdded:Connect(function(gui)
-        if not secretHiderOn then return end
-        suscribirGui(gui, true)
+        if secretHiderOn then suscribirGui(gui, true) end
     end)
 end
 
@@ -698,51 +563,35 @@ local function stopSecretHider()
     for key, conn in pairs(shConns) do conn:Disconnect(); shConns[key] = nil end
     if shGuiConn then shGuiConn:Disconnect(); shGuiConn = nil end
     for frame in pairs(ocultados) do pcall(function() frame.Visible = true end) end
-    ocultados           = setmetatable({}, {__mode="k"})
-    descPreExistentes   = {}
+    ocultados         = setmetatable({}, {__mode="k"})
+    descPreExistentes = {}
 end
 
--- AUTO PESCA
 local autoFishOn   = false
 local _fishRunning = false
 local _fishConn    = nil
 local FISH_POWER   = 3
-
-local FISH_NOTIFY = {
-    Secret    = true,
-    Divine    = true,
-    Godly     = true,
-    Mythic    = true,
-    Legendary = true,
-}
+local FISH_NOTIFY  = { Secret=true, Divine=true, Godly=true, Mythic=true, Legendary=true }
 
 local function startAutoFish()
     if _fishRunning then return end
     _fishRunning = true
     local rh = ReplicatedStorage:FindFirstChild("RemoteHandler")
-    if not rh then print("[AutoPesca] RemoteHandler no encontrado"); _fishRunning = false; return end
+    if not rh then _fishRunning = false return end
     local fishing = rh:FindFirstChild("Fishing")
     local catched  = rh:FindFirstChild("Catched")
-    if not fishing then print("[AutoPesca] Fishing no encontrado"); _fishRunning = false; return end
-
-    -- Notificacion de rarezas altas via OnClientEvent
+    if not fishing then _fishRunning = false return end
     if catched then
         if _fishConn then _fishConn:Disconnect() end
         _fishConn = catched.OnClientEvent:Connect(function(data)
-            if not autoFishOn then return end
-            if type(data) ~= "table" then return end
+            if not autoFishOn or type(data) ~= "table" then return end
             local rar = tostring(data.rarity or "")
-            local br  = tostring(data.brainrot or "")
-            local mod = tostring(data.modification or "")
             if FISH_NOTIFY[rar] then
-                print("[PESCA] " .. rar .. " | " .. br .. " | " .. mod)
+                notify(rar .. " | " .. tostring(data.brainrot or "") .. " | " .. tostring(data.modification or ""), 5)
             end
         end)
     end
-
-    -- Loop turbo de pesca
     task.spawn(function()
-        print("[AutoPesca] TURBO activo!")
         while autoFishOn and _fishRunning do
             pcall(function() fishing:FireServer("Started") end)
             task.wait(0.05)
@@ -754,7 +603,6 @@ local function startAutoFish()
             task.wait(0.05)
         end
         _fishRunning = false
-        print("[AutoPesca] Detenido")
     end)
 end
 
@@ -764,32 +612,12 @@ local function stopAutoFish()
     if _fishConn then _fishConn:Disconnect(); _fishConn = nil end
 end
 
--- AUTO MONEY, BEST (Upgrade Brainrots)
 local autoMoneyBest    = false
 local moneyBestLoop    = nil
 local mbUpgradeCount   = 0
 local mbCurrentIdIndex = 1
-
--- Auto Best
-local autoBestOn  = false
-local bestLoop    = nil
-
-local function startBestLoop()
-    if bestLoop then return end
-    bestLoop = task.spawn(function()
-        while autoBestOn do
-            local plotR = getR("Plot")
-            if plotR then
-                pcall(plotR.FireServer, plotR, "EquipBest", "String", "String")
-            end
-            task.wait(8)
-        end
-    end)
-end
-
-local function stopBestLoop()
-    if bestLoop then task.cancel(bestLoop); bestLoop = nil end
-end
+local autoBestOn       = false
+local bestLoop         = nil
 
 local MB_IDS = {
     "Brainrot88:Normal:24:1677:9714289418",
@@ -797,44 +625,50 @@ local MB_IDS = {
     "Brainrot61:Normal:112:1063:9714289418",
 }
 
-local function mbEquipBest()
-    local plotR = getR("Plot")
-    if plotR then pcall(plotR.FireServer, plotR, "EquipBest", "String", "String") end
-end
-
-local function mbUpgrade()
-    local brR = getR("Brainrot")
-    local id  = MB_IDS[mbCurrentIdIndex]
-    if brR and id then
-        pcall(brR.FireServer, brR, "Upgrade", id)
-        mbUpgradeCount = mbUpgradeCount + 1
-        if mbUpgradeCount % 5 == 0 then
-            mbCurrentIdIndex = (mbCurrentIdIndex % #MB_IDS) + 1
+local function startBestLoop()
+    if bestLoop then return end
+    bestLoop = task.spawn(function()
+        while autoBestOn do
+            local plotR = getR("Plot")
+            if plotR then pcall(plotR.FireServer, plotR, "EquipBest", "String", "String") end
+            task.wait(8)
         end
-    end
+        bestLoop = nil
+    end)
+end
+local function stopBestLoop()
+    if bestLoop then task.cancel(bestLoop); bestLoop = nil end
 end
 
 local function startMoneyBestLoop()
     if moneyBestLoop then return end
     moneyBestLoop = task.spawn(function()
         while autoMoneyBest do
-            mbEquipBest()
+            local plotR = getR("Plot")
+            if plotR then pcall(plotR.FireServer, plotR, "EquipBest", "String", "String") end
             task.wait(0.5)
-            mbUpgrade()
+            local brR = getR("Brainrot")
+            local id  = MB_IDS[mbCurrentIdIndex]
+            if brR and id then
+                pcall(brR.FireServer, brR, "Upgrade", id)
+                mbUpgradeCount = mbUpgradeCount + 1
+                if mbUpgradeCount % 5 == 0 then
+                    mbCurrentIdIndex = (mbCurrentIdIndex % #MB_IDS) + 1
+                end
+            end
             task.wait(1)
         end
+        moneyBestLoop = nil
     end)
 end
-
 local function stopMoneyBestLoop()
     if moneyBestLoop then task.cancel(moneyBestLoop); moneyBestLoop = nil end
 end
 
--- AUTO COLLECT v9 (Recolectar Plots con tick-based timing)
 local autoCollectOn     = false
 local collectLoop       = nil
-local acCollectInterval = 2   -- segundos entre cada ciclo
-local acMaxPlots        = 30  -- plots máximos a recolectar
+local acCollectInterval = 2
+local acMaxPlots        = 30
 local _lastCollect      = 0
 
 local function startCollectLoop()
@@ -855,17 +689,15 @@ local function startCollectLoop()
         collectLoop = nil
     end)
 end
-
 local function stopCollectLoop()
     autoCollectOn = false
     if collectLoop then task.cancel(collectLoop); collectLoop = nil end
     _lastCollect = 0
 end
 
--- AUTO FISH POWER (power10 / power5 / power1)
 local autoPowerOn = false
 local powerLoop   = nil
-local POWERS = { "power10", "power5", "power1" }
+local POWERS      = { "power10", "power5", "power1" }
 
 local function startPowerLoop()
     if powerLoop then return end
@@ -889,7 +721,6 @@ local function stopPowerLoop()
     if powerLoop then task.cancel(powerLoop); powerLoop = nil end
 end
 
--- AUTO BASE LEVEL
 local autoBaseLevelOn = false
 local baseLevelLoop   = nil
 
@@ -909,7 +740,6 @@ local function stopBaseLevelLoop()
     if baseLevelLoop then task.cancel(baseLevelLoop); baseLevelLoop = nil end
 end
 
--- AUTO FISH CATCH (carry1)
 local autoCatchOn = false
 local catchLoop   = nil
 
@@ -929,7 +759,6 @@ local function stopCatchLoop()
     if catchLoop then task.cancel(catchLoop); catchLoop = nil end
 end
 
--- AUTO FISHING ROD (compra varillas 1-15)
 local autoRodOn = false
 local rodLoop   = nil
 local RODS = {
@@ -960,7 +789,6 @@ local function stopRodLoop()
     if rodLoop then task.cancel(rodLoop); rodLoop = nil end
 end
 
--- AUTO ROD MUTATION (mutaciones 1-7)
 local autoMutationOn = false
 local mutationLoop   = nil
 local MUTATIONS = {
@@ -990,18 +818,16 @@ local function stopMutationLoop()
     if mutationLoop then task.cancel(mutationLoop); mutationLoop = nil end
 end
 
--- AUTO REBIRTH
 local autoRebirthOn = false
 local rebirthLoop   = nil
 
 local function doRebirth()
     local rb = getR("Rebirth")
     if not rb then
-        -- Fallback: buscar en Paths
         local paths = ReplicatedStorage:FindFirstChild("Paths")
         if paths then rb = paths:FindFirstChild("Rebirth") end
     end
-    if not rb then warn("[AutoRebirth] Remote no encontrado"); return end
+    if not rb then return end
     if rb:IsA("RemoteEvent") then
         pcall(function() rb:FireServer() end)
     elseif rb:IsA("RemoteFunction") then
@@ -1012,10 +838,7 @@ end
 local function startRebirthLoop()
     if rebirthLoop then return end
     rebirthLoop = task.spawn(function()
-        while autoRebirthOn do
-            doRebirth()
-            task.wait(5)
-        end
+        while autoRebirthOn do doRebirth() task.wait(5) end
         rebirthLoop = nil
     end)
 end
@@ -1024,44 +847,38 @@ local function stopRebirthLoop()
     if rebirthLoop then task.cancel(rebirthLoop); rebirthLoop = nil end
 end
 
--- AUTO UPGRADE BRAINROT (workspace Bases)
 local autoUpgBrainrotOn = false
 local upgBrainrotLoop   = nil
-
-local function doUpgradeBrainrot()
-    local myId = tostring(LP.UserId)
-    local Bases = Workspace:FindFirstChild("Bases")
-    if not Bases then return end
-    local brR = getR("Brainrot")
-    if not brR then return end
-    for _, base in pairs(Bases:GetChildren()) do
-        local ownerVal = base:FindFirstChildWhichIsA("StringValue")
-            or base:FindFirstChildWhichIsA("IntValue")
-        local ownerId = ownerVal and tostring(ownerVal.Value) or ""
-        if ownerId == myId then
-            local objects = base:FindFirstChild("Objects")
-            if objects then
-                for _, plot in pairs(objects:GetChildren()) do
-                    if plot:IsA("Model") then
-                        for _, brainrot in pairs(plot:GetChildren()) do
-                            if brainrot:IsA("Model") then
-                                pcall(function() brR:FireServer("Upgrade", brainrot.Name) end)
-                                task.wait(0.05)
-                            end
-                        end
-                    end
-                end
-            end
-            break
-        end
-    end
-end
 
 local function startUpgBrainrotLoop()
     if upgBrainrotLoop then return end
     upgBrainrotLoop = task.spawn(function()
         while autoUpgBrainrotOn do
-            doUpgradeBrainrot()
+            local myId  = tostring(LP.UserId)
+            local Bases = Workspace:FindFirstChild("Bases")
+            local brR   = getR("Brainrot")
+            if Bases and brR then
+                for _, base in pairs(Bases:GetChildren()) do
+                    local ownerVal = base:FindFirstChildWhichIsA("StringValue")
+                                  or base:FindFirstChildWhichIsA("IntValue")
+                    if ownerVal and tostring(ownerVal.Value) == myId then
+                        local objects = base:FindFirstChild("Objects")
+                        if objects then
+                            for _, plot in pairs(objects:GetChildren()) do
+                                if plot:IsA("Model") then
+                                    for _, br in pairs(plot:GetChildren()) do
+                                        if br:IsA("Model") then
+                                            pcall(function() brR:FireServer("Upgrade", br.Name) end)
+                                            task.wait(0.05)
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
             task.wait(0.5)
         end
         upgBrainrotLoop = nil
@@ -1072,328 +889,9 @@ local function stopUpgBrainrotLoop()
     if upgBrainrotLoop then task.cancel(upgBrainrotLoop); upgBrainrotLoop = nil end
 end
 
--- LIBRERÍA — cargada externamente por el loader
-local Compkiller = getgenv().Compkiller
-if not Compkiller then
-    warn("[BLADEX] Compkiller no encontrado. Ejecuta el loader primero.")
-    return
-end
-
-local Notifier = Compkiller.newNotify()
-
-local ConfigManager = Compkiller:ConfigManager({
-    Directory = "BLADEX-HUB",
-    Config = "BLADEX-Configs"
-})
-
-Compkiller:Loader(Compkiller.Logo, 2.5).yield()
-
-local Window = Compkiller.new({
-    Name = "BLADEX HUB",
-    Keybind = "LeftAlt",
-    Logo = Compkiller.Logo,
-    Scale = UDim2.new(0, 460, 0, 320),
-    TextSize = 15,
-})
-
-Notifier.new({
-    Title = "BLADEX HUB",
-    Content = "Reel A Brainrot cargado!",
-    Duration = 5,
-    Icon = Compkiller.Logo
-})
-
-Window:DrawCategory({ Name = "Main" })
-
--- AUTO SCRIPT
-local AutoScriptTab = Window:DrawTab({
-    Name = "Auto Farm",
-    Icon = "rocket",
-    EnableScrolling = true
-})
-
--- Sección izquierda — todos los autos principales
-local AutoScriptLeft = AutoScriptTab:DrawSection({ Name = "Auto Farm", Position = "left", Minimized = true })
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Pesca",
-    Flag = "auto_pesca",
-    Default = false,
-    Callback = function(v)
-        autoFishOn = v
-        if v then startAutoFish() else stopAutoFish() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Money, Best",
-    Flag = "auto_money_best",
-    Default = false,
-    Callback = function(v)
-        autoMoneyBest = v
-        if v then startMoneyBestLoop() else stopMoneyBestLoop() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Best",
-    Flag = "auto_best",
-    Default = false,
-    Callback = function(v)
-        autoBestOn = v
-        if v then startBestLoop() else stopBestLoop() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Money",
-    Flag = "auto_collect",
-    Default = false,
-    Callback = function(v)
-        autoCollectOn = v
-        if v then startCollectLoop() else stopCollectLoop() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Fish Power",
-    Flag = "auto_fish_power",
-    Default = false,
-    Callback = function(v)
-        autoPowerOn = v
-        if v then startPowerLoop() else stopPowerLoop() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Rebirth",
-    Flag = "auto_rebirth",
-    Default = false,
-    Callback = function(v)
-        autoRebirthOn = v
-        if v then startRebirthLoop() else stopRebirthLoop() end
-    end,
-})
-
-AutoScriptLeft:AddToggle({
-    Name = "Auto Upgrade Brainrot",
-    Flag = "auto_upgrade_brainrot",
-    Default = false,
-    Callback = function(v)
-        autoUpgBrainrotOn = v
-        if v then startUpgBrainrotLoop() else stopUpgBrainrotLoop() end
-    end,
-})
-
--- Sección derecha — upgrades de varilla/nivel
-local AutoScriptRight = AutoScriptTab:DrawSection({ Name = "Upgrades", Position = "right", Minimized = true })
-
-AutoScriptRight:AddToggle({
-    Name = "Auto Base Level",
-    Flag = "auto_base_level",
-    Default = false,
-    Callback = function(v)
-        autoBaseLevelOn = v
-        if v then startBaseLevelLoop() else stopBaseLevelLoop() end
-    end,
-})
-
-AutoScriptRight:AddToggle({
-    Name = "Auto Fish Catch",
-    Flag = "auto_fish_catch",
-    Default = false,
-    Callback = function(v)
-        autoCatchOn = v
-        if v then startCatchLoop() else stopCatchLoop() end
-    end,
-})
-
-AutoScriptRight:AddToggle({
-    Name = "Auto Fishing Rod",
-    Flag = "auto_fishing_rod",
-    Default = false,
-    Callback = function(v)
-        autoRodOn = v
-        if v then startRodLoop() else stopRodLoop() end
-    end,
-})
-
-AutoScriptRight:AddToggle({
-    Name = "Auto Rod Mutation",
-    Flag = "auto_rod_mutation",
-    Default = false,
-    Callback = function(v)
-        autoMutationOn = v
-        if v then startMutationLoop() else stopMutationLoop() end
-    end,
-})
-
--- REEL A BRAINROT (Seller + Hider)
-local PescaTab = Window:DrawTab({
-    Name = "Reel A Brainrot",
-    Icon = "anchor",
-    EnableScrolling = true
-})
-
--- Seller
-local SellerSection = PescaTab:DrawSection({ Name = "Auto Seller", Position = "left", Minimized = true })
-
-SellerSection:AddToggle({
-    Name = "Auto Sell",
-    Flag = "auto_sell",
-    Default = false,
-    Callback = function(v)
-        autoSell = v
-        if v and selSpd >= 1 then timerVal = SPEEDS[selSpd].secs end
-    end,
-})
-
-SellerSection:AddDropdown({
-    Name = "Velocidad",
-    Default = "NORMAL",
-    Flag = "sell_speed",
-    Values = { "LARGO (60s)", "NORMAL (40s)" },
-    Callback = function(v)
-        if v:find("LARGO") then selSpd = 1; timerVal = 60
-        else selSpd = 2; timerVal = 40 end
-    end,
-})
-
-SellerSection:AddSlider({
-    Name = "Intervalo personalizado (s)",
-    Min = 5, Max = 120, Default = 10,
-    Round = 0, Flag = "sell_custom",
-    Callback = function(v) customSecs = v; if selSpd == 0 then timerVal = v end end,
-})
-
-local RarsSection = PescaTab:DrawSection({ Name = "Rarezas a vender", Position = "right", Minimized = true })
-for _, r in ipairs(RARS) do
-    local ref = r
-    RarsSection:AddToggle({
-        Name = r.name,
-        Default = r.on,
-        Callback = function(v) ref.on = v; invalidarSellCache() end,
-    })
-end
-
--- Hider
-local HiderSection = PescaTab:DrawSection({ Name = "Brainrot Hider", Position = "left", Minimized = true })
-
-HiderSection:AddToggle({
-    Name = "Activar Hider",
-    Flag = "hider_on",
-    Default = false,
-    Callback = function(v)
-        secretHiderOn = v
-        if v then startSecretHider() else stopSecretHider() end
-    end,
-})
-
-local HiderRarsSection = PescaTab:DrawSection({ Name = "Rarezas a ocultar", Position = "right", Minimized = true })
-for _, r in ipairs(HIDER_RARS) do
-    local ref = r
-    HiderRarsSection:AddToggle({
-        Name = r.name,
-        Default = r.on,
-        Callback = function(v) ref.on = v end,
-    })
-end
-
-local StPatTab = Window:DrawTab({
-    Name = "Auto Kraken",
-    Icon = "anchor",
-    EnableScrolling = true
-})
-
--- Sección Auto Potion
-local PotionSection = StPatTab:DrawSection({ Name = "Auto Potion", Position = "left", Minimized = true })
-
-PotionSection:AddToggle({
-    Name = "Auto Potion",
-    Flag = "auto_lucky",
-    Default = false,
-    Callback = function(v)
-        Activo = v
-        if v then
-            if not AntiAFKConn then
-                AntiAFKConn = LP.Idled:Connect(function()
-                    VirtualUser:CaptureController()
-                    VirtualUser:ClickButton2(Vector2.new())
-                end)
-            end
-            task.spawn(BucleLucky)
-        else
-            if AntiAFKConn then AntiAFKConn:Disconnect(); AntiAFKConn = nil end
-        end
-    end,
-})
-
-local ItemsSection = StPatTab:DrawSection({ Name = "Items a abrir", Position = "right", Minimized = true })
-for _, cfg in ipairs(ITEM_CONFIG) do
-    local cfgRef = cfg
-    ItemsSection:AddToggle({
-        Name = cfg.label,
-        Flag = "item_" .. cfg.key,
-        Default = cfg.on,
-        Callback = function(v) cfgRef.on = v end,
-    })
-end
-
--- Sección Auto Shop
-local ShopLeftSection = StPatTab:DrawSection({ Name = "Auto Shop", Position = "left", Minimized = true })
-
-ShopLeftSection:AddToggle({
-    Name = "Auto Shop Kraken",
-    Flag = "auto_buy",
-    Default = false,
-    Callback = function(v)
-        autoBuyOn = v
-        if v then startAutoBuy() else stopAutoBuy() end
-    end,
-})
-
-local ShopRightSection = StPatTab:DrawSection({ Name = "Items a comprar", Position = "right", Minimized = true })
-for _, cfg in ipairs(SHOP_CONFIG) do
-    local cfgRef = cfg
-    ShopRightSection:AddToggle({
-        Name = cfg.label,
-        Flag = cfg.key,
-        Default = cfg.on,
-        Callback = function(v) cfgRef.on = v end,
-    })
-end
-
--- Sección Auto Submit
-local SubmitLeftSection = StPatTab:DrawSection({ Name = "Auto Submit", Position = "left", Minimized = true })
-
-SubmitLeftSection:AddToggle({
-    Name = "Auto Submit Brainrot",
-    Flag = "auto_submit",
-    Default = false,
-    Callback = function(v)
-        autoSubmitOn = v
-        if v then startAutoSubmit() else stopAutoSubmit() end
-    end,
-})
-
-local SubmitRarsSection = StPatTab:DrawSection({ Name = "Rarezas a submitear", Position = "right", Minimized = true })
-for _, r in ipairs(SUBMIT_RARS) do
-    local ref = r
-    SubmitRarsSection:AddToggle({
-        Name = r.name,
-        Default = r.on,
-        Callback = function(v) ref.on = v end,
-    })
-end
-
-
--- Dupe
-local _Remote = game:GetService("ReplicatedStorage").RemoteHandler.Plot
-
 local dupeStates = {
-    AutoBase = false,
-    Base1=false, Base2=false, Base3=false,
-    Base4=false, Base5=false, Base6=false,
+    AutoBase=false, Base1=false, Base2=false, Base3=false,
+    Base4=false,    Base5=false, Base6=false,
 }
 local dupeLoops = {}
 
@@ -1437,13 +935,13 @@ local function _getMyBase()
             end
         end
         for _, child in pairs(base:GetChildren()) do
-            if (child:IsA("StringValue") or child:IsA("IntValue")) then
+            if child:IsA("StringValue") or child:IsA("IntValue") then
                 local val = tostring(child.Value)
                 if val == myId or val == myName then return objects end
             end
         end
-        local attrOwner = base:GetAttribute("Owner") or base:GetAttribute("OwnerId")
-        if attrOwner and (tostring(attrOwner) == myId or tostring(attrOwner) == myName) then
+        local attr = base:GetAttribute("Owner") or base:GetAttribute("OwnerId")
+        if attr and (tostring(attr) == myId or tostring(attr) == myName) then
             return objects
         end
     end
@@ -1456,12 +954,10 @@ local function _startDupe(key, getBaseFn)
         local ITEM = _getDupeBrainrot()
         local Base = getBaseFn()
         if not Base then
-            warn("[DUPE] Base no encontrada: " .. key)
             dupeStates[key] = false
             dupeLoops[key]  = nil
             return
         end
-        print("[DUPE] " .. key .. " → " .. ITEM)
         local threads = {}
         for i = 1, 30 do
             threads[i] = task.spawn(function()
@@ -1486,20 +982,146 @@ local function _stopDupe(key)
     if dupeLoops[key] then task.cancel(dupeLoops[key]); dupeLoops[key] = nil end
 end
 
-local DupeTab = Window:DrawTab({
-    Name           = "Dupe",
-    Icon           = "copy",
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local AutoFarmTab = Window:DrawTab({
+    Name            = "Auto Farm",
+    Icon            = "lucide-sword",
     EnableScrolling = true,
 })
+local AutoFarmLeft  = AutoFarmTab:DrawSection({ Name="Auto Farm", Position="left",  Minimized=true })
+local AutoFarmRight = AutoFarmTab:DrawSection({ Name="Upgrades",  Position="right", Minimized=true })
 
-local DupeLeft  = DupeTab:DrawSection({ Name = "Auto Base",   Position = "left",  Minimized = true })
-local DupeRight = DupeTab:DrawSection({ Name = "Bases Fijas", Position = "right", Minimized = true })
+AutoFarmLeft:AddToggle({ Name="Auto Pesca",            Flag="auto_pesca",            Default=false, Risky=false, Callback=function(v) autoFishOn=v        if v then startAutoFish()        else stopAutoFish()        end end })
+AutoFarmLeft:AddToggle({ Name="Auto Money, Best",      Flag="auto_money_best",       Default=false, Risky=false, Callback=function(v) autoMoneyBest=v      if v then startMoneyBestLoop()   else stopMoneyBestLoop()   end end })
+AutoFarmLeft:AddToggle({ Name="Auto Best",             Flag="auto_best",             Default=false, Risky=false, Callback=function(v) autoBestOn=v         if v then startBestLoop()        else stopBestLoop()        end end })
+AutoFarmLeft:AddToggle({ Name="Auto Collect Cash",     Flag="auto_collect",          Default=false, Risky=false, Callback=function(v) autoCollectOn=v      if v then startCollectLoop()     else stopCollectLoop()     end end })
+AutoFarmLeft:AddToggle({ Name="Auto Fish Power",       Flag="auto_fish_power",       Default=false, Risky=false, Callback=function(v) autoPowerOn=v        if v then startPowerLoop()       else stopPowerLoop()       end end })
+AutoFarmLeft:AddToggle({ Name="Auto Rebirth",          Flag="auto_rebirth",          Default=false, Risky=false, Callback=function(v) autoRebirthOn=v      if v then startRebirthLoop()     else stopRebirthLoop()     end end })
+AutoFarmLeft:AddToggle({ Name="Auto Upgrade Brainrot", Flag="auto_upgrade_brainrot", Default=false, Risky=false, Callback=function(v) autoUpgBrainrotOn=v  if v then startUpgBrainrotLoop() else stopUpgBrainrotLoop() end end })
+
+AutoFarmRight:AddToggle({ Name="Auto Base Level",   Flag="auto_base_level",   Default=false, Risky=false, Callback=function(v) autoBaseLevelOn=v if v then startBaseLevelLoop() else stopBaseLevelLoop() end end })
+AutoFarmRight:AddToggle({ Name="Auto Fish Catch",   Flag="auto_fish_catch",   Default=false, Risky=false, Callback=function(v) autoCatchOn=v     if v then startCatchLoop()     else stopCatchLoop()     end end })
+AutoFarmRight:AddToggle({ Name="Auto Fishing Rod",  Flag="auto_fishing_rod",  Default=false, Risky=false, Callback=function(v) autoRodOn=v       if v then startRodLoop()       else stopRodLoop()       end end })
+AutoFarmRight:AddToggle({ Name="Auto Rod Mutation", Flag="auto_rod_mutation", Default=false, Risky=false, Callback=function(v) autoMutationOn=v  if v then startMutationLoop()  else stopMutationLoop()  end end })
+
+local PescaTab = Window:DrawTab({
+    Name            = "Reel A Brainrot",
+    Icon            = "anchor",
+    EnableScrolling = true,
+})
+local SellerLeft  = PescaTab:DrawSection({ Name="Auto Seller",       Position="left",  Minimized=true })
+local SellerRight = PescaTab:DrawSection({ Name="Rarezas a vender",  Position="right", Minimized=true })
+local HiderLeft   = PescaTab:DrawSection({ Name="Brainrot Hider",    Position="left",  Minimized=true })
+local HiderRight  = PescaTab:DrawSection({ Name="Rarezas a ocultar", Position="right", Minimized=true })
+
+SellerLeft:AddToggle({
+    Name="Auto Sell", Flag="auto_sell", Default=false, Risky=false,
+    Callback=function(v) autoSell=v if v and selSpd >= 1 then timerVal=SPEEDS[selSpd].secs end end,
+})
+SellerLeft:AddDropdown({
+    Name="Velocidad", Default="NORMAL", Flag="sell_speed",
+    Values={ "LARGO (60s)", "NORMAL (40s)" },
+    Callback=function(v)
+        if v:find("LARGO") then selSpd=1; timerVal=60 else selSpd=2; timerVal=40 end
+    end,
+})
+SellerLeft:AddSlider({
+    Name="Intervalo personalizado (s)", Min=5, Max=120, Default=10,
+    Round=0, Flag="sell_custom",
+    Callback=function(v) customSecs=v if selSpd==0 then timerVal=v end end,
+})
+
+for _, r in ipairs(RARS) do
+    local ref = r
+    SellerRight:AddToggle({ Name=r.name, Default=r.on, Risky=false, Callback=function(v) ref.on=v invalidarSellCache() end })
+end
+
+HiderLeft:AddToggle({
+    Name="Activar Hider", Flag="hider_on", Default=false, Risky=false,
+    Callback=function(v) secretHiderOn=v if v then startSecretHider() else stopSecretHider() end end,
+})
+
+for _, r in ipairs(HIDER_RARS) do
+    local ref = r
+    HiderRight:AddToggle({ Name=r.name, Default=r.on, Risky=false, Callback=function(v) ref.on=v end })
+end
+
+local KrakenTab = Window:DrawTab({
+    Name            = "Auto Kraken",
+    Icon            = "anchor",
+    EnableScrolling = true,
+})
+local PotionLeft  = KrakenTab:DrawSection({ Name="Auto Potion",         Position="left",  Minimized=true })
+local PotionRight = KrakenTab:DrawSection({ Name="Items a abrir",       Position="right", Minimized=true })
+local ShopLeft    = KrakenTab:DrawSection({ Name="Auto Shop",           Position="left",  Minimized=true })
+local ShopRight   = KrakenTab:DrawSection({ Name="Items a comprar",     Position="right", Minimized=true })
+local SubmitLeft  = KrakenTab:DrawSection({ Name="Auto Submit",         Position="left",  Minimized=true })
+local SubmitRight = KrakenTab:DrawSection({ Name="Rarezas a submitear", Position="right", Minimized=true })
+
+PotionLeft:AddToggle({
+    Name="Auto Potion", Flag="auto_lucky", Default=false, Risky=false,
+    Callback=function(v)
+        Activo = v
+        if v then
+            if not AntiAFKConn then
+                AntiAFKConn = LP.Idled:Connect(function()
+                    VirtualUser:CaptureController()
+                    VirtualUser:ClickButton2(Vector2.new())
+                end)
+            end
+            task.spawn(BucleLucky)
+        else
+            if AntiAFKConn then AntiAFKConn:Disconnect(); AntiAFKConn = nil end
+        end
+    end,
+})
+
+for _, cfg in ipairs(ITEM_CONFIG) do
+    local cfgRef = cfg
+    PotionRight:AddToggle({ Name=cfg.label, Flag="item_"..cfg.key, Default=cfg.on, Risky=false, Callback=function(v) cfgRef.on=v end })
+end
+
+ShopLeft:AddToggle({
+    Name="Auto Shop Kraken", Flag="auto_buy", Default=false, Risky=false,
+    Callback=function(v) autoBuyOn=v if v then startAutoBuy() else stopAutoBuy() end end,
+})
+
+for _, cfg in ipairs(SHOP_CONFIG) do
+    local cfgRef = cfg
+    ShopRight:AddToggle({ Name=cfg.label, Flag=cfg.key, Default=cfg.on, Risky=false, Callback=function(v) cfgRef.on=v end })
+end
+
+SubmitLeft:AddToggle({
+    Name="Auto Submit Brainrot", Flag="auto_submit", Default=false, Risky=false,
+    Callback=function(v) autoSubmitOn=v if v then startAutoSubmit() else stopAutoSubmit() end end,
+})
+
+for _, r in ipairs(SUBMIT_RARS) do
+    local ref = r
+    SubmitRight:AddToggle({ Name=r.name, Default=r.on, Risky=false, Callback=function(v) ref.on=v end })
+end
+
+local DupeTab = Window:DrawTab({
+    Name            = "Dupe",
+    Icon            = "copy",
+    EnableScrolling = true,
+})
+local DupeLeft  = DupeTab:DrawSection({ Name="Auto Base",   Position="left",  Minimized=true })
+local DupeRight = DupeTab:DrawSection({ Name="Bases Fijas", Position="right", Minimized=true })
 
 DupeLeft:AddToggle({
-    Name    = "Auto Base",
-    Flag    = "dupe_autobase",
-    Default = false,
-    Callback = function(v)
+    Name="Auto Base", Flag="dupe_autobase", Default=false, Risky=false,
+    Callback=function(v)
         dupeStates.AutoBase = v
         if v then _startDupe("AutoBase", _getMyBase) else _stopDupe("AutoBase") end
     end,
@@ -1508,10 +1130,8 @@ DupeLeft:AddToggle({
 for _, baseName in ipairs({ "Base1","Base2","Base3","Base4","Base5","Base6" }) do
     local key = baseName
     DupeRight:AddToggle({
-        Name    = key,
-        Flag    = "dupe_" .. key:lower(),
-        Default = false,
-        Callback = function(v)
+        Name=key, Flag="dupe_"..key:lower(), Default=false, Risky=false,
+        Callback=function(v)
             dupeStates[key] = v
             if v then
                 _startDupe(key, function()
@@ -1525,49 +1145,39 @@ for _, baseName in ipairs({ "Base1","Base2","Base3","Base4","Base5","Base6" }) d
     })
 end
 
-Window:DrawCategory({ Name = "Misc" })
+Window:DrawCategory({ Name = "Extra" })
 
 local AjustesTab = Window:DrawTab({
-    Icon = "settings-3",
-    Name = "Ajustes",
-    Type = "Single",
-    EnableScrolling = true
+    Name            = "Ajustes",
+    Icon            = "settings",
+    Type            = "Single",
+    EnableScrolling = true,
 })
-
-local AjustesSection = AjustesTab:DrawSection({ Name = "UI Settings", Minimized = true })
+local AjustesSection = AjustesTab:DrawSection({ Name="UI Settings", Position="full", Minimized=true })
 
 AjustesSection:AddToggle({
-    Name = "Always Show Frame",
-    Default = false,
-    Callback = function(v) Window.AlwayShowTab = v end,
+    Name="Always Show Frame", Default=false, Risky=false,
+    Callback=function(v) Window.AlwayShowTab = v end,
 })
-
 AjustesSection:AddColorPicker({
-    Name = "Highlight",
-    Default = Compkiller.Colors.Highlight,
-    Callback = function(v)
+    Name="Highlight", Default=Compkiller.Colors.Highlight,
+    Callback=function(v)
         Compkiller.Colors.Highlight = v
         Compkiller:RefreshCurrentColor()
     end,
 })
-
 AjustesSection:AddDropdown({
-    Name = "Select Theme",
-    Default = "Default",
-    Values = { "Default", "Dark Green", "Dark Blue", "Purple Rose", "Skeet" },
-    Callback = function(v) Compkiller:SetTheme(v) end,
+    Name="Select Theme", Default="Default",
+    Values={ "Default","Dark Green","Dark Blue","Purple Rose","Skeet" },
+    Callback=function(v) Compkiller:SetTheme(v) end,
 })
 
-Window:DrawConfig({
-    Name = "Config",
-    Icon = "folder",
-    Config = ConfigManager
-}):Init()
+Window:DrawConfig({ Name="Config", Icon="folder", Config=ConfigManager }):Init()
 
--- Reconectar personaje
+_BLADEX_LOADING = false
+notify("Reel A Brainrot cargado!", 5)
+
 LP.CharacterAdded:Connect(function(c)
     Char = c
     Hum  = c:WaitForChild("Humanoid")
 end)
-
-print("[BLADEX HUB] Reel A Brainrot cargado!")
