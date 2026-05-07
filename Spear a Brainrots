@@ -1,4 +1,4 @@
-Compkiller:OptimizeMode(true)
+ Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
 local Notifier = Compkiller.newNotify()
