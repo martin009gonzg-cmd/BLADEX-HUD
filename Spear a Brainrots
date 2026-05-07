@@ -1,8 +1,3 @@
-if not Compkiller then
-    warn("[BLADEX] Compkiller no encontrado. Carga la libreria antes de ejecutar este script.")
-    return
-end
-
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
@@ -24,13 +19,11 @@ local ConfigManager = Compkiller:ConfigManager({
     Config    = "BLADEX-SpearBrainrots",
 })
 
--- === SERVICIOS ===
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace         = game:GetService("Workspace")
 local lp                = Players.LocalPlayer
 
--- === DELAYS ===
 local DELAY_BETWEEN_SLOTS_COLLECT = 0.05
 local DELAY_BETWEEN_SLOTS_PICKUP  = 0.05
 local DELAY_BETWEEN_SLOTS_UPGRADE = 0.005
@@ -42,7 +35,6 @@ local CYCLE_WAIT_REBIRTH          = 2
 local CYCLE_WAIT_POWER            = 1
 local CYCLE_WAIT_CARRY            = 2
 
--- === REMOTES FARM ===
 local mainRemote    = ReplicatedStorage:FindFirstChild("RF/Plot.PlotAction", true)
 local baseRemote    = ReplicatedStorage:FindFirstChild("RE/Plot.UpgradeBase", true)
 local remFuncs      = ReplicatedStorage:FindFirstChild("RemoteFunctions", true)
@@ -50,7 +42,6 @@ local rebirthRemote = remFuncs and remFuncs:FindFirstChild("Rebirth")
 local speedRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeSpeed")
 local carryRemote   = remFuncs and remFuncs:FindFirstChild("UpgradeCarry")
 
--- === UUID ===
 local function detectUUID()
     for k, v in pairs(lp:GetAttributes()) do
         if type(v) == "string" and v:match("%x+%-%x+%-%x+%-%x+%-%x+") then return v end
@@ -67,7 +58,6 @@ local function detectUUID()
 end
 local currentUUID = detectUUID()
 
--- === ACCIONES FARM ===
 local function collectSlot(slot)
     if not mainRemote or not currentUUID then return false end
     return pcall(mainRemote.InvokeServer, mainRemote, "Collect Money", currentUUID, tostring(slot))
@@ -112,7 +102,6 @@ local function runSlots(actionFunc, delay)
     end
 end
 
--- === REMOTES SPEAR ===
 local char = lp.Character or lp.CharacterAdded:Wait()
 local hrp  = char:WaitForChild("HumanoidRootPart")
 
@@ -140,7 +129,6 @@ for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
     end
 end
 
--- === CONFIG SPEAR ===
 local spearConfig = {
     enabled  = false,
     interval = 20,
@@ -199,7 +187,6 @@ if fishBiteRemote then
     end)
 end
 
--- === LOOP MANAGER ===
 local activeThreads = {}
 local function startLoop(name, fn)
     if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
@@ -217,7 +204,6 @@ local function loopRebirth() while true do doRebirth() task.wait(CYCLE_WAIT_REBI
 local function loopPower()   while true do doPowerUpgrades() task.wait(CYCLE_WAIT_POWER) end end
 local function loopCarry()   while true do doCarryUpgrade() task.wait(CYCLE_WAIT_CARRY) end end
 
--- === UI ===
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
 
 local Window = Compkiller.new({
@@ -229,7 +215,6 @@ local Window = Compkiller.new({
 })
 Window.Minimized = true
 
--- === TAB: AUTO FARM ===
 local farmTab = Window:DrawTab({
     Name            = "Auto Farm",
     Icon            = "lucide-sword",
@@ -266,7 +251,6 @@ SecRight:AddToggle({ Name = "Auto Pickup Brainrot", Default = false, Flag = "BLA
 
 Window:DrawCategory({ Name = "Extra" })
 
--- === TAB: AJUSTES ===
 local ajustesTab = Window:DrawTab({
     Name = "Ajustes",
     Icon = "settings",
@@ -305,4 +289,4 @@ Window:DrawConfig({
 }):Init()
 
 _BLADEX_LOADING = false
-notify("BLADEX HUD CARGANDO", 5)
+notify("Spear a Brainrots cargado!", 5)
