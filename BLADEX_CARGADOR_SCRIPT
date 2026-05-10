@@ -5,13 +5,11 @@ local function _BLADEX_INIT()
     local _pcall = pcall
     local _HttpService = _game:GetService("HttpService")
 
-    -- CONFIGURACIÓN
     local CACHE_FOLDER = "bladex_cache/"
     local CACHE_TTL = 3600
 
     local HAS_FILE_ACCESS = type(writefile) == "function" and type(isfile) == "function" and type(readfile) == "function"
 
-    -- NOTIFICACIONES
     local function notify(title, msg, duration)
         duration = duration or 5
         local lib = _getgenv().Compkiller
@@ -23,7 +21,6 @@ local function _BLADEX_INIT()
         end
     end
 
-    -- DESCARGA CON CACHÉ
     local function getCacheFileName(url)
         local hash = _HttpService:JSONEncode({url = url}):sub(2, -2)
         local safe = url:gsub("[%p%c]", "_"):sub(1, 40)
@@ -73,11 +70,11 @@ local function _BLADEX_INIT()
         return nil
     end
 
-    -- BASE DE DATOS LOCAL
     local DEFAULT_GAMES = {
         [124473577469410] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block",          name = "Lucky Block Sim"},
         [134190049316507] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",     name = "Spear a Brainrots"},
-        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower", name = "Brainrot Morph Tower"},
+        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower",  name = "Brainrot Morph Tower"},
+        [136066387156306] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/FlashForBrainrot",          name = "Be A Flash For Brainrot"},
 
         -- RANURA 2 (pendiente)
         -- [000000000000000] = {url = "", name = ""},
@@ -86,14 +83,12 @@ local function _BLADEX_INIT()
         -- [000000000000000] = {url = "", name = ""},
     }
 
-    -- BLOQUEO DE EJECUCIÓN MÚLTIPLE
     if _getgenv()._BLADEX_LOADING then
         notify("Advertencia", "Ya hay una instancia cargando", 3)
         return
     end
     _getgenv()._BLADEX_LOADING = true
 
-    -- OBTENER INFORMACIÓN DEL JUEGO
     local currentId = _game.PlaceId
     local gameData = DEFAULT_GAMES[currentId]
 
@@ -104,7 +99,6 @@ local function _BLADEX_INIT()
         return
     end
 
-    -- DESCARGAR LIBRERÍA Y SCRIPT EN PARALELO
     local libCode, scriptCode
     local libDone = false
     local scriptDone = false
@@ -123,7 +117,6 @@ local function _BLADEX_INIT()
 
     while not (libDone and scriptDone) do _task.wait(0.05) end
 
-    -- INICIALIZAR LIBRERÍA
     if not _getgenv().Compkiller then
         if libCode then
             local func, err = loadstring(libCode)
@@ -142,7 +135,6 @@ local function _BLADEX_INIT()
         end
     end
 
-    -- EJECUTAR SCRIPT PRINCIPAL
     notify("BLADEX HUB", "Iniciando " .. gameData.name, 3)
 
     if scriptCode then
@@ -164,7 +156,6 @@ local function _BLADEX_INIT()
         notify("No se pudo ejecutar", gameData.name .. " | UID: " .. tostring(currentId), 5)
     end
 
-    -- LIMPIEZA
     _getgenv()._BLADEX_LOADING = nil
 end
 
