@@ -173,7 +173,6 @@ end
 local function loopFarmBrain()
     local zonaActual, zonaIdx = getZone()
     print("[BLADEX] Auto Farm ON | Zona: " .. zonaActual.nombre)
-    notify("Auto Farm ON | " .. zonaActual.nombre, 4)
 
     while _G.AutoFarmBrainrots do
         local char, hrp = getFarmCharacter()
@@ -184,7 +183,6 @@ local function loopFarmBrain()
                 zonaIdx    = nuevoIdx
                 zonaActual = nuevaZona
                 print("[BLADEX] Zona → " .. zonaActual.nombre)
-                notify("Zona → " .. zonaActual.nombre, 3)
             end
 
             hrp.CFrame = CFrame.new(zonaActual.pos)
@@ -265,7 +263,6 @@ local function loopKEPO()
             if BCR then pcall(BCR.FireServer, BCR) end
             if UOR then pcall(UOR.FireServer, UOR) end
             if AM  then pcall(AM.FireServer, AM)   end
-            notify("KEPO: bonus reclamado!")
         end
         task.wait(5)
     end
@@ -394,7 +391,6 @@ local function tog(sec, name, flag, gl, ln, lf)
         Callback = function(v)
             _G[gl] = v
             if v then startLoop(ln, lf) else stopLoop(ln) end
-            notify(v and name .. " ON" or name .. " OFF")
         end
     })
     t:SetValue(false)
