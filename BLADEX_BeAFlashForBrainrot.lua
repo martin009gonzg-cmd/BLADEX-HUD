@@ -1,0 +1,421 @@
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+local function notify(content, duration)
+    if _BLADEX_LOADING then return end
+    Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-BeALuckyBlock",
+})
+
+local RS      = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local WS      = game:GetService("Workspace")
+
+local remotes   = RS:WaitForChild("Remotes", 10)
+local remoteGUI = RS:WaitForChild("RemoteGUI", 10)
+local events    = RS:WaitForChild("Events", 10)
+
+local BBR  = remotes   and remotes:WaitForChild("BreakBlockRemote", 10)
+local SE   = remotes   and remotes:WaitForChild("SellEvent", 10)
+local UBR  = remotes   and remotes:WaitForChild("UpgradeBrainrotRemote", 10)
+local BBnd = remotes   and remotes:WaitForChild("BrainrotBoundRemote", 10)
+local UPR  = remotes   and remotes:WaitForChild("UpgradePlotRemote", 10)
+local UDB  = remoteGUI and remoteGUI:WaitForChild("UDropBrainrot", 10)
+local UUC  = remoteGUI and remoteGUI:WaitForChild("UUpgradeCarry", 10)
+local UUS  = remoteGUI and remoteGUI:WaitForChild("UUpgradeStamina", 10)
+local URB  = remoteGUI and remoteGUI:WaitForChild("URebirth", 10)
+local UBS  = remoteGUI and remoteGUI:WaitForChild("UBuySpinEvent", 10)
+local UOR  = remoteGUI and remoteGUI:WaitForChild("UOfflineRewardEvent", 10)
+local DE   = RS:WaitForChild("DashEvent", 10)
+local BCR  = RS:WaitForChild("BonusClaimRemote", 10)
+local AM   = RS:WaitForChild("ApplyMutation", 10)
+local TTE  = events and events:WaitForChild("TrainTreadmillEvent", 10)
+local STE  = events and events:WaitForChild("SendTreadmillEvent", 10)
+local DSE  = remotes and remotes:FindFirstChild("DecreaseStamina")
+local GSF  = RS:FindFirstChild("Functions") and RS.Functions:FindFirstChild("GetStaminaFunc")
+local PBR  = (remotes and remotes:FindFirstChild("PlaceBrainrot")) or (remoteGUI and remoteGUI:FindFirstChild("UPlaceBrainrot"))
+
+local StaminaLevel = Players.LocalPlayer:WaitForChild("StaminaLevel", 10)
+
+_G.AutoFarmBrainrots = false
+_G.AutoUpgradeBrain  = false
+_G.AutoRebirth       = false
+_G.AutoUpgradePlot   = false
+_G.AutoFarm          = false
+_G.AutoSnap          = false
+_G.KEPO              = true
+_G.AutoSell          = false
+_G.AutoCollectCash   = false
+_G.AutoPickup        = false
+_G.AutoX2Stamina     = false
+
+local threads = {}
+local function startLoop(n, f)
+    if threads[n] then pcall(task.cancel, threads[n]) threads[n] = nil end
+    threads[n] = task.spawn(f)
+end
+local function stopLoop(n)
+    if threads[n] then pcall(task.cancel, threads[n]) threads[n] = nil end
+end
+
+local function getMyPlot()
+    local lp    = Players.LocalPlayer
+    local plots = WS:FindFirstChild("Plots")
+    if not plots then return nil end
+    for _, b in ipairs(plots:GetChildren()) do
+        local o = b:FindFirstChild("Owner") or b:FindFirstChild("OwnerId") or b:FindFirstChild("PlayerId")
+        if o then
+            local v = o.Value
+            if v == lp.Name or v == lp.UserId or v == tostring(lp.UserId) then return b end
+        end
+    end
+    local char = lp.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local md, mc = math.huge, nil
+        for _, b in ipairs(plots:GetChildren()) do
+            local p = b:FindFirstChildWhichIsA("BasePart")
+            if p then
+                local d = (hrp.Position - p.Position).Magnitude
+                if d < md then md = d mc = b end
+            end
+        end
+        if md < 300 then return mc end
+    end
+    return nil
+end
+
+local function touchStands(hrp, ms)
+    if not ms or not hrp then return end
+    for _, stand in ipairs(ms:GetChildren()) do
+        local sc   = stand:FindFirstChild("StandClaim")
+        local hb   = sc and sc:FindFirstChild("StandClaimHitbox")
+        if hb then
+            pcall(function() firetouchinterest(hrp, hb, 0) end)
+            task.wait(0.03)
+            pcall(function() firetouchinterest(hrp, hb, 1) end)
+        end
+        local pp   = stand:FindFirstChild("PlacePoint")
+        local att  = pp and pp:FindFirstChild("Att_Pickup")
+        local prom = att and att:FindFirstChild("PickupPrompt")
+        if prom then pcall(function() fireproximityprompt(prom) end) end
+    end
+end
+
+local speedwalls = {
+    { nombre = "SW1  - 100",     pos = Vector3.new(0, 25, -1000),  threshold = 0                },
+    { nombre = "SW2  - 1K",      pos = Vector3.new(0, 25, -2000),  threshold = 100              },
+    { nombre = "SW3  - 15K",     pos = Vector3.new(0, 25, -3000),  threshold = 1000             },
+    { nombre = "SW4  - 225K",    pos = Vector3.new(0, 25, -4000),  threshold = 15000            },
+    { nombre = "SW5  - 3.4M",    pos = Vector3.new(0, 25, -5000),  threshold = 225000           },
+    { nombre = "SW6  - 50M",     pos = Vector3.new(0, 25, -6000),  threshold = 3400000          },
+    { nombre = "SW7  - 750M",    pos = Vector3.new(0, 25, -7000),  threshold = 50000000         },
+    { nombre = "SW8  - 11.2B",   pos = Vector3.new(0, 25, -8000),  threshold = 750000000        },
+    { nombre = "SW9  - 168.8B",  pos = Vector3.new(0, 25, -9000),  threshold = 11200000000      },
+    { nombre = "SW10 - 2.5T",    pos = Vector3.new(0, 25, -10000), threshold = 168800000000     },
+    { nombre = "SW11 - 37.5T",   pos = Vector3.new(0, 25, -11000), threshold = 2500000000000    },
+    { nombre = "SW12 - 562.5T",  pos = Vector3.new(0, 25, -12000), threshold = 37500000000000   },
+    { nombre = "SW13 - Border",  pos = Vector3.new(0, 25, -13005), threshold = 562500000000000  },
+}
+
+local function getZone()
+    if not StaminaLevel then return speedwalls[1], 1 end
+    local val = StaminaLevel.Value
+    for i = #speedwalls, 1, -1 do
+        if val >= speedwalls[i].threshold then
+            return speedwalls[i], i
+        end
+    end
+    return speedwalls[1], 1
+end
+
+local function getFarmCharacter()
+    local char = Players.LocalPlayer.Character
+    if not char then return nil, nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hrp and hum and hum.Health > 0 then return char, hrp end
+    return nil, nil
+end
+
+local function esperarBrainrot(timeout)
+    local recibido = false
+    local nombre   = "?"
+    local conns    = {}
+    for _, obj in ipairs(RS:GetDescendants()) do
+        if obj:IsA("RemoteEvent") then
+            local ok, conn = pcall(function()
+                return obj.OnClientEvent:Connect(function(msg, num, tipo)
+                    if tipo == "Success" and tostring(msg):find("Added!") then
+                        nombre   = tostring(msg):gsub(" Added!", "")
+                        recibido = true
+                    end
+                end)
+            end)
+            if ok and conn then table.insert(conns, conn) end
+        end
+    end
+    local t = 0
+    while not recibido and t < timeout do
+        task.wait(0.1)
+        t += 0.1
+    end
+    for _, c in ipairs(conns) do pcall(function() c:Disconnect() end) end
+    return recibido, nombre
+end
+
+local function loopFarmBrain()
+    local zonaActual, zonaIdx = getZone()
+    print("[BLADEX] Auto Farm ON | Zona: " .. zonaActual.nombre)
+    notify("Auto Farm ON | " .. zonaActual.nombre, 4)
+
+    while _G.AutoFarmBrainrots do
+        local char, hrp = getFarmCharacter()
+
+        if char and hrp then
+            local nuevaZona, nuevoIdx = getZone()
+            if nuevoIdx ~= zonaIdx then
+                zonaIdx    = nuevoIdx
+                zonaActual = nuevaZona
+                print("[BLADEX] Zona → " .. zonaActual.nombre)
+                notify("Zona → " .. zonaActual.nombre, 3)
+            end
+
+            hrp.CFrame = CFrame.new(zonaActual.pos)
+            task.wait(0.3)
+
+            if DE then pcall(function() DE:FireServer("EndWarp") end) end
+            task.wait(0.3)
+
+            if DE then pcall(function() DE:FireServer("StartCharge") end) end
+            task.wait(0.8)
+            if DE then pcall(function() DE:FireServer(3) end) end
+
+            local ok, nombre = esperarBrainrot(10)
+            if ok then
+                print("[BLADEX] ✓ " .. nombre)
+            else
+                print("[BLADEX] ✗ Timeout - reintentando...")
+            end
+
+            task.wait(0.2)
+        else
+            task.wait(1)
+        end
+    end
+
+    print("[BLADEX] Auto Farm OFF")
+end
+
+local function loopUpgradeBrain()
+    while _G.AutoUpgradeBrain do
+        local base = getMyPlot()
+        if base then
+            local ms = base:FindFirstChild("ModelStands")
+            if ms then
+                for _, s in ipairs(ms:GetChildren()) do
+                    if not _G.AutoUpgradeBrain then break end
+                    for lvl = 1, 30 do
+                        if not _G.AutoUpgradeBrain then break end
+                        if UBR then pcall(UBR.FireServer, UBR, base, s, lvl) end
+                        task.wait(0.1)
+                    end
+                end
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
+local function loopUpgradePlot()
+    while _G.AutoUpgradePlot do
+        local base = getMyPlot()
+        if UPR and base then pcall(UPR.FireServer, UPR, base) end
+        task.wait(0.5)
+    end
+end
+
+local function loopRebirth()
+    while _G.AutoRebirth do
+        if URB then pcall(URB.FireServer, URB) end
+        task.wait(1)
+    end
+end
+
+local function loopKEPO()
+    local lp   = Players.LocalPlayer
+    local tick = 0
+    while _G.KEPO do
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            hrp.CFrame = hrp.CFrame * CFrame.new(0.01, 0, 0)
+            task.wait(0.2)
+            hrp.CFrame = hrp.CFrame * CFrame.new(-0.01, 0, 0)
+        end
+        tick = tick + 1
+        if tick >= 6 then
+            tick = 0
+            if BCR then pcall(BCR.FireServer, BCR) end
+            if UOR then pcall(UOR.FireServer, UOR) end
+            if AM  then pcall(AM.FireServer, AM)   end
+            notify("KEPO: bonus reclamado!")
+        end
+        task.wait(5)
+    end
+end
+
+local function loopAutoSell()
+    local lp = Players.LocalPlayer
+    while _G.AutoSell do
+        local bp = lp:FindFirstChild("Backpack")
+        if bp then
+            for _, item in ipairs(bp:GetChildren()) do
+                if not _G.AutoSell then break end
+                if SE then pcall(SE.FireServer, SE, item) end
+                task.wait(0.1)
+            end
+        end
+        if getnilinstances then
+            for _, v in ipairs(getnilinstances()) do
+                if not _G.AutoSell then break end
+                if v.ClassName == "Tool" and (v:IsDescendantOf(lp) or v.Parent == nil) then
+                    if SE then pcall(SE.FireServer, SE, v) end
+                    task.wait(0.1)
+                end
+            end
+        end
+        task.wait(0.3)
+    end
+end
+
+local function loopCollectCash()
+    local lp = Players.LocalPlayer
+    while _G.AutoCollectCash do
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local base = getMyPlot()
+        if hrp and base then
+            local ms = base:FindFirstChild("ModelStands")
+            if ms then
+                for _, stand in ipairs(ms:GetChildren()) do
+                    if not _G.AutoCollectCash then break end
+                    local sc = stand:FindFirstChild("StandClaim")
+                    local hb = sc and sc:FindFirstChild("StandClaimHitbox")
+                    if hb then
+                        pcall(function() firetouchinterest(hrp, hb, 0) end)
+                        task.wait(0.03)
+                        pcall(function() firetouchinterest(hrp, hb, 1) end)
+                    end
+                end
+            end
+        end
+        task.wait(0.35)
+    end
+end
+
+local function loopAutoPickup()
+    local lp = Players.LocalPlayer
+    while _G.AutoPickup do
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        local base = getMyPlot()
+        if hrp and base then
+            local ms = base:FindFirstChild("ModelStands")
+            if ms then
+                for _, stand in ipairs(ms:GetChildren()) do
+                    if not _G.AutoPickup then break end
+                    local pp   = stand:FindFirstChild("PlacePoint")
+                    local att  = pp and pp:FindFirstChild("Att_Pickup")
+                    local prom = att and att:FindFirstChild("PickupPrompt")
+                    if prom then pcall(function() fireproximityprompt(prom) end) end
+                end
+            end
+        end
+        task.wait(0.35)
+    end
+end
+
+local function loopX2Stamina()
+    local lp           = Players.LocalPlayer
+    local BLUE_BTN_IMG = "rbxassetid://116730274482512"
+    local function fireBtn(btn)
+        if getconnections then
+            pcall(function()
+                for _, c in ipairs(getconnections(btn.MouseButton1Click)) do pcall(c.Function) end
+                for _, c in ipairs(getconnections(btn.Activated)) do pcall(c.Function) end
+            end)
+        end
+        if firesignal then
+            pcall(function() firesignal(btn.MouseButton1Click) end)
+            pcall(function() firesignal(btn.Activated) end)
+        end
+    end
+    local pg = lp:WaitForChild("PlayerGui", 10)
+    if pg then
+        pg.DescendantAdded:Connect(function(obj)
+            if not _G.AutoX2Stamina then return end
+            if obj:IsA("ImageButton") and obj.Image == BLUE_BTN_IMG then
+                fireBtn(obj)
+                task.delay(0.05, function()
+                    if obj and obj.Parent then fireBtn(obj) end
+                end)
+            end
+        end)
+    end
+    while _G.AutoX2Stamina do task.wait(0.5) end
+end
+
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local mainTab = Window:DrawTab({ Name = "Be a Lucky Block", Icon = "lucide-gem", Type = "Double", EnableScrolling = true })
+
+local function tog(sec, name, flag, gl, ln, lf)
+    local t = sec:AddToggle({
+        Name     = name,
+        Default  = false,
+        Flag     = flag,
+        Risky    = false,
+        Callback = function(v)
+            _G[gl] = v
+            if v then startLoop(ln, lf) else stopLoop(ln) end
+            notify(v and name .. " ON" or name .. " OFF")
+        end
+    })
+    t:SetValue(false)
+end
+
+local SB = mainTab:DrawSection({ Name = "Brainrots", Position = "left",  Minimized = true })
+tog(SB, "Auto Farm Brainrots",    "BLADEX_autofarmb",    "AutoFarmBrainrots", "AutoFarmBrainrots", loopFarmBrain)
+tog(SB, "Auto Collect Cash",      "BLADEX_autocash",     "AutoCollectCash",   "AutoCollectCash",   loopCollectCash)
+tog(SB, "Auto Upgrade Brainrot",  "BLADEX_autoupbrain",  "AutoUpgradeBrain",  "AutoUpgradeBrain",  loopUpgradeBrain)
+tog(SB, "Auto Pickup",            "BLADEX_autopickup",   "AutoPickup",        "AutoPickup",        loopAutoPickup)
+tog(SB, "Auto Sell",              "BLADEX_autosell",     "AutoSell",          "AutoSell",          loopAutoSell)
+
+local SU = mainTab:DrawSection({ Name = "Upgrades", Position = "right", Minimized = true })
+tog(SU, "Auto Upgrade Plot",  "BLADEX_autoupplot",  "AutoUpgradePlot", "AutoUpgradePlot", loopUpgradePlot)
+tog(SU, "Auto x2 Stamina",    "BLADEX_autox2stam",  "AutoX2Stamina",   "AutoX2Stamina",   loopX2Stamina)
+tog(SU, "Auto Rebirth",       "BLADEX_autorebirth", "AutoRebirth",     "AutoRebirth",     loopRebirth)
+
+startLoop("KEPO", loopKEPO)
+
+Window:DrawCategory({ Name = "Extra" })
+Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
+
+_BLADEX_LOADING = false
+notify("Be A Flash For Brainrot cargado!", 5)
