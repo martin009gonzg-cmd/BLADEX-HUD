@@ -383,7 +383,7 @@ local Window = Compkiller.new({
 })
 Window.Minimized = true
 
-local mainTab = Window:DrawTab({ Name = "Be a Lucky Block", Icon = "lucide-gem", Type = "Double", EnableScrolling = true })
+local mainTab = Window:DrawTab({ Name = "FlashForBrainrot", Icon = "lucide-gem", Type = "Double", EnableScrolling = true })
 
 local function tog(sec, name, flag, gl, ln, lf)
     local t = sec:AddToggle({
