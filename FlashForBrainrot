@@ -53,6 +53,7 @@ _G.KEPO              = true
 _G.AutoSell          = false
 _G.AutoCollectCash   = false
 _G.AutoPickup        = false
+_G.AutoInfinityFarm  = false
 _G.AutoX2Stamina     = false
 
 local threads = {}
@@ -172,7 +173,6 @@ end
 
 local function loopFarmBrain()
     local zonaActual, zonaIdx = getZone()
-    print("[BLADEX] Auto Farm ON | Zona: " .. zonaActual.nombre)
 
     while _G.AutoFarmBrainrots do
         local char, hrp = getFarmCharacter()
@@ -182,7 +182,6 @@ local function loopFarmBrain()
             if nuevoIdx ~= zonaIdx then
                 zonaIdx    = nuevoIdx
                 zonaActual = nuevaZona
-                print("[BLADEX] Zona → " .. zonaActual.nombre)
             end
 
             hrp.CFrame = CFrame.new(zonaActual.pos)
@@ -197,9 +196,7 @@ local function loopFarmBrain()
 
             local ok, nombre = esperarBrainrot(10)
             if ok then
-                print("[BLADEX] ✓ " .. nombre)
             else
-                print("[BLADEX] ✗ Timeout - reintentando...")
             end
 
             task.wait(0.2)
@@ -207,8 +204,6 @@ local function loopFarmBrain()
             task.wait(1)
         end
     end
-
-    print("[BLADEX] Auto Farm OFF")
 end
 
 local function loopUpgradeBrain()
@@ -369,6 +364,111 @@ local function loopX2Stamina()
     while _G.AutoX2Stamina do task.wait(0.5) end
 end
 
+
+local INF_MAX_TIER  = 12
+local INF_SCAN_DLY  = 0.4
+
+local INF_RARITY_SORTED = {}
+do
+    local p = {
+        hacker=10, lightning=9, blizzard=8, lava=7,
+        candy=6, rainbow=5, diamond=4, ["+2"]=2, ["+1"]=1,
+    }
+    for k,v in pairs(p) do table.insert(INF_RARITY_SORTED,{key=k,priority=v}) end
+    table.sort(INF_RARITY_SORTED, function(a,b) return a.priority>b.priority end)
+end
+
+local function infMatchKey(text, key)
+    if key:match("^%a+$") then
+        return text:find("%f[%a]"..key.."%f[%A]") ~= nil
+    else return text:find(key,1,true) ~= nil end
+end
+local function infCheckText(text)
+    if not text then return nil end
+    local low = text:lower()
+    for _,e in ipairs(INF_RARITY_SORTED) do
+        if infMatchKey(low, e.key) then return e.key end
+    end
+end
+local function infGetRarity(part)
+    local k = infCheckText(part.Name)
+    if k then return k end
+    for _,d in ipairs(part:GetDescendants()) do
+        if d:IsA("TextLabel") or d:IsA("TextButton") then
+            k = infCheckText(d.Text) if k then return k end
+        end
+        k = infCheckText(d.Name) if k then return k end
+    end
+end
+local function infGetParts()
+    local parts = {}
+    local bw = workspace:FindFirstChild("BuffWalls") or workspace:FindFirstChild("Walls")
+    if bw then
+        for _,d in ipairs(bw:GetDescendants()) do
+            if d:IsA("BasePart") then table.insert(parts,d) end
+        end
+    else
+        for _,d in ipairs(workspace:GetDescendants()) do
+            if d:IsA("BasePart") then
+                local n = d.Name:lower()
+                if n:find("buff") or n:find("arrow") or n:find("boost") then
+                    table.insert(parts,d)
+                end
+            end
+        end
+    end
+    return parts
+end
+local function infGetTier()
+    local char = Players.LocalPlayer.Character
+    local lb = char and char:FindFirstChild("Luckyblock")
+    return lb and lb:GetAttribute("Tier") or 0
+end
+local function infTouch(part, hrp)
+    pcall(function()
+        firetouchinterest(part, hrp, 0)
+        task.wait(0.05)
+        firetouchinterest(part, hrp, 1)
+    end)
+end
+
+local function loopInfinityFarm()
+    while _G.AutoInfinityFarm do
+        local char, hrp = getFarmCharacter()
+        if not hrp then task.wait(1) continue end
+        if DE then pcall(DE.FireServer, DE, "StartCharge") end
+        task.wait(0.5)
+        if DE then pcall(DE.FireServer, DE, 3) end
+        task.wait(0.3)
+        local rainbowTouched = false
+        while _G.AutoInfinityFarm do
+            local tier = infGetTier()
+            if rainbowTouched and tier >= INF_MAX_TIER then break end
+
+            local parts = infGetParts()
+            for _, part in ipairs(parts) do
+                if not _G.AutoInfinityFarm then break end
+                local key = infGetRarity(part)
+                if not key then continue end
+
+                if key == "rainbow" and not rainbowTouched then
+                    infTouch(part, hrp)
+                    rainbowTouched = true
+                    task.wait(0.3)
+                elseif key == "+2" or key == "+1" then
+                    infTouch(part, hrp)
+                    task.wait(0.1)
+                end
+            end
+            task.wait(INF_SCAN_DLY)
+        end
+
+        if not _G.AutoInfinityFarm then break end
+        if DE then pcall(DE.FireServer, DE, "EndWarp") end
+        task.wait(1.2)
+    end
+end
+
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
 
 local Window = Compkiller.new({
@@ -398,6 +498,7 @@ end
 
 local SB = mainTab:DrawSection({ Name = "Brainrots", Position = "left",  Minimized = true })
 tog(SB, "Auto Farm Brainrots",    "BLADEX_autofarmb",    "AutoFarmBrainrots", "AutoFarmBrainrots", loopFarmBrain)
+tog(SB, "Auto Infinity Farm",      "BLADEX_infinityfarm", "AutoInfinityFarm",  "AutoInfinityFarm",  loopInfinityFarm)
 tog(SB, "Auto Collect Cash",      "BLADEX_autocash",     "AutoCollectCash",   "AutoCollectCash",   loopCollectCash)
 tog(SB, "Auto Upgrade Brainrot",  "BLADEX_autoupbrain",  "AutoUpgradeBrain",  "AutoUpgradeBrain",  loopUpgradeBrain)
 tog(SB, "Auto Pickup",            "BLADEX_autopickup",   "AutoPickup",        "AutoPickup",        loopAutoPickup)
