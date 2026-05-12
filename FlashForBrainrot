@@ -206,23 +206,236 @@ local function loopFarmBrain()
     end
 end
 
-local function loopUpgradeBrain()
-    while _G.AutoUpgradeBrain do
-        local base = getMyPlot()
-        if base then
-            local ms = base:FindFirstChild("ModelStands")
-            if ms then
-                for _, s in ipairs(ms:GetChildren()) do
-                    if not _G.AutoUpgradeBrain then break end
-                    for lvl = 1, 30 do
-                        if not _G.AutoUpgradeBrain then break end
-                        if UBR then pcall(UBR.FireServer, UBR, base, s, lvl) end
-                        task.wait(0.1)
-                    end
+local UPG_SUFFIXES = {
+    {"Qa", 1e15}, {"Qi", 1e18}, {"Sx", 1e21}, {"Sp", 1e24},
+    {"Oc", 1e27}, {"No", 1e30}, {"Dc", 1e33},
+    {"K",  1e3},  {"M",  1e6},  {"B",  1e9},  {"T",  1e12},
+}
+local function upgParseNumber(str)
+    if not str or str == "" then return nil end
+    str = str:gsub("[$,%s+]", "")
+    if str == "" then return nil end
+    for _, pair in ipairs(UPG_SUFFIXES) do
+        local suffix, mult = pair[1], pair[2]
+        local num = str:match("^([%d%.]+)" .. suffix .. "$")
+        if num then
+            local n = tonumber(num)
+            if n then return n * mult end
+        end
+    end
+    return tonumber(str)
+end
+
+local UPG_MONEY_FOLDERS = {
+    "leaderstats", "Data", "Stats", "PlayerData",
+    "Currencies", "Currency", "GameData", "PlayerStats",
+    "Resources", "Wallet", "Economy",
+}
+local UPG_MONEY_NAMES = {
+    "Cash", "Money", "Coins", "Gold", "Currency",
+    "Dinero", "Gems", "Credits", "Caramelos",
+    "Bucks", "Dollar", "Dollars", "Balance",
+}
+local function upgIsMoneyValue(v)
+    return v:IsA("IntValue") or v:IsA("NumberValue") or v:IsA("StringValue")
+end
+local function upgSearchFolder(folder)
+    for _, mName in ipairs(UPG_MONEY_NAMES) do
+        local v = folder:FindFirstChild(mName)
+        if v and upgIsMoneyValue(v) then return v end
+    end
+    for _, v in ipairs(folder:GetChildren()) do
+        if v:IsA("IntValue") or v:IsA("NumberValue") then return v end
+    end
+    for _, v in ipairs(folder:GetChildren()) do
+        if v:IsA("StringValue") and upgParseNumber(v.Value) ~= nil then return v end
+    end
+    return nil
+end
+local function upgFindMoney()
+    local lp = Players.LocalPlayer
+    for _, folderName in ipairs(UPG_MONEY_FOLDERS) do
+        local folder = lp:FindFirstChild(folderName)
+        if folder then
+            local v = upgSearchFolder(folder)
+            if v then return v end
+        end
+    end
+    for _, child in ipairs(lp:GetChildren()) do
+        if child:IsA("Folder") or child:IsA("Configuration") then
+            for _, mName in ipairs(UPG_MONEY_NAMES) do
+                local v = child:FindFirstChild(mName)
+                if v and upgIsMoneyValue(v) then return v end
+            end
+        end
+    end
+    for _, attrName in ipairs(UPG_MONEY_NAMES) do
+        local v = lp:GetAttribute(attrName)
+        if type(v) == "number" then
+            return { _isAttr = true, _name = attrName }
+        end
+    end
+    return nil
+end
+
+local _upgMoneyRef = nil
+local function upgEnsureMoney()
+    if not _upgMoneyRef then _upgMoneyRef = upgFindMoney(); return end
+    if type(_upgMoneyRef) == "table" then return end
+    if not _upgMoneyRef.Parent then _upgMoneyRef = upgFindMoney() end
+end
+local function upgGetMoney()
+    if not _upgMoneyRef then return nil end
+    local lp = Players.LocalPlayer
+    if type(_upgMoneyRef) == "table" then
+        local v = lp:GetAttribute(_upgMoneyRef._name)
+        return type(v) == "number" and v or upgParseNumber(tostring(v))
+    end
+    if _upgMoneyRef:IsA("StringValue") then return upgParseNumber(_upgMoneyRef.Value) end
+    return _upgMoneyRef.Value
+end
+
+local function upgIsEmpty(stand)
+    local lbl = stand:FindFirstChild("Txt_UpgradePrice", true)
+    if lbl and (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) then
+        local t = (lbl.Text or ""):gsub("%s", "")
+        if t == "$0" or t == "0" then return true end
+    end
+    return false
+end
+local function upgIsMax(stand)
+    for _, d in ipairs(stand:GetDescendants()) do
+        if d:IsA("TextLabel") or d:IsA("TextButton") then
+            local t = (d.Text or ""):lower()
+            if t:match("m[aá]ximo") or t:match("max level") or t:match("nivel max") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local _upgCostCache = setmetatable({}, {__mode = "k"})
+local UPG_COST_SFX  = {"Qa","Qi","Sx","Sp","Oc","No","Dc","K","M","B","T"}
+local UPG_EXCLUDE   = {"income","titulo","title","name","nivel","level","rank"}
+
+local function upgLooksCost(text)
+    if not text or text == "" then return false end
+    if text:match("%$") then return true end
+    for _, s in ipairs(UPG_COST_SFX) do
+        if text:match("%d" .. s) then return true end
+    end
+    return false
+end
+local function upgIsExcluded(name)
+    local n = name:lower()
+    for _, e in ipairs(UPG_EXCLUDE) do
+        if n:match(e) then return true end
+    end
+    return false
+end
+local function upgCostKey(stand)
+    local parts = {}
+    for _, d in ipairs(stand:GetDescendants()) do
+        if (d:IsA("TextLabel") or d:IsA("TextButton")) and not upgIsExcluded(d.Name) then
+            local t = d.Text or ""
+            if upgLooksCost(t) then table.insert(parts, d.Name .. "=" .. t) end
+        end
+    end
+    table.sort(parts)
+    return table.concat(parts, "|")
+end
+local function upgGetCost(stand)
+    local key    = upgCostKey(stand)
+    local cached = _upgCostCache[stand]
+    if cached and cached.key == key then return cached.cost end
+    local candidates = {}
+    for _, d in ipairs(stand:GetDescendants()) do
+        if (d:IsA("TextLabel") or d:IsA("TextButton")) and not upgIsExcluded(d.Name) then
+            local t = d.Text or ""
+            if upgLooksCost(t) then
+                local n = upgParseNumber(t)
+                if n then
+                    local nl = d.Name:lower()
+                    local pri = (nl:match("cost") or nl:match("upgrade")
+                        or nl:match("precio") or nl:match("price")) and 1 or 2
+                    table.insert(candidates, { n = n, priority = pri })
                 end
             end
         end
-        task.wait(0.5)
+    end
+    if #candidates == 0 then
+        _upgCostCache[stand] = { key = key, cost = nil }
+        return nil
+    end
+    table.sort(candidates, function(a, b)
+        if a.priority ~= b.priority then return a.priority < b.priority end
+        return a.n < b.n
+    end)
+    local cost = candidates[1].n
+    _upgCostCache[stand] = { key = key, cost = cost }
+    return cost
+end
+
+local function upgRunCycle(base)
+    local ms = base:FindFirstChild("ModelStands")
+    if not ms then return 0 end
+    local standList = {}
+    for _, child in ipairs(ms:GetChildren()) do
+        if child.Name:match("^ModelStand%d+$") then
+            table.insert(standList, child)
+        end
+    end
+    table.sort(standList, function(a, b)
+        local ca = upgGetCost(a) or math.huge
+        local cb = upgGetCost(b) or math.huge
+        return ca < cb
+    end)
+    local ok_count = 0
+    for _, stand in ipairs(standList) do
+        if not _G.AutoUpgradeBrain then break end
+        if not upgIsEmpty(stand) and not upgIsMax(stand) then
+            local money = upgGetMoney()
+            local cost  = upgGetCost(stand)
+            if money and cost and money >= cost then
+                local upgraded = false
+                for _ = 1, 3 do
+                    local ok = pcall(function() UBR:FireServer(base, stand) end)
+                    if ok then upgraded = true; break end
+                    task.wait(0.1)
+                end
+                if upgraded then ok_count = ok_count + 1 end
+                task.wait(0.15)
+            else
+                task.wait(0.05)
+            end
+        end
+    end
+    return ok_count
+end
+
+local _upgBase = nil
+local function upgEnsureBase()
+    if _upgBase and _upgBase.Parent then return end
+    _upgBase = getMyPlot()
+end
+
+local function loopUpgradeBrain()
+    _upgBase    = getMyPlot()
+    if not _upgBase then return end
+    _upgMoneyRef = upgFindMoney()
+    if not _upgMoneyRef then return end
+
+    while _G.AutoUpgradeBrain do
+        upgEnsureMoney()
+        upgEnsureBase()
+        if _upgBase then
+            local n = upgRunCycle(_upgBase)
+            local d = 0.3
+            task.wait(n == 0 and d * 3 or n >= 3 and d or d * 1.5)
+        else
+            task.wait(2)
+        end
     end
 end
 
@@ -257,7 +470,6 @@ local function loopKEPO()
             tick = 0
             if BCR then pcall(BCR.FireServer, BCR) end
             if UOR then pcall(UOR.FireServer, UOR) end
-            if AM  then pcall(AM.FireServer, AM)   end
         end
         task.wait(5)
     end
@@ -363,7 +575,6 @@ local function loopX2Stamina()
     end
     while _G.AutoX2Stamina do task.wait(0.5) end
 end
-
 
 local INF_MAX_TIER  = 12
 local INF_SCAN_DLY  = 0.4
@@ -497,17 +708,17 @@ local function tog(sec, name, flag, gl, ln, lf)
 end
 
 local SB = mainTab:DrawSection({ Name = "Brainrots", Position = "left",  Minimized = true })
-tog(SB, "Auto Farm Brainrots",    "BLADEX_autofarmb",    "AutoFarmBrainrots", "AutoFarmBrainrots", loopFarmBrain)
-tog(SB, "Auto Infinity Farm",      "BLADEX_infinityfarm", "AutoInfinityFarm",  "AutoInfinityFarm",  loopInfinityFarm)
-tog(SB, "Auto Collect Cash",      "BLADEX_autocash",     "AutoCollectCash",   "AutoCollectCash",   loopCollectCash)
-tog(SB, "Auto Upgrade Brainrot",  "BLADEX_autoupbrain",  "AutoUpgradeBrain",  "AutoUpgradeBrain",  loopUpgradeBrain)
-tog(SB, "Auto Pickup",            "BLADEX_autopickup",   "AutoPickup",        "AutoPickup",        loopAutoPickup)
-tog(SB, "Auto Sell",              "BLADEX_autosell",     "AutoSell",          "AutoSell",          loopAutoSell)
+tog(SB, "Auto Farm Brainrots",   "BLADEX_autofarmb",    "AutoFarmBrainrots", "AutoFarmBrainrots", loopFarmBrain)
+tog(SB, "Auto Infinity Farm",    "BLADEX_infinityfarm", "AutoInfinityFarm",  "AutoInfinityFarm",  loopInfinityFarm)
+tog(SB, "Auto Collect Cash",     "BLADEX_autocash",     "AutoCollectCash",   "AutoCollectCash",   loopCollectCash)
+tog(SB, "Auto Upgrade Brainrot", "BLADEX_autoupbrain",  "AutoUpgradeBrain",  "AutoUpgradeBrain",  loopUpgradeBrain)
+tog(SB, "Auto Pickup",           "BLADEX_autopickup",   "AutoPickup",        "AutoPickup",        loopAutoPickup)
+tog(SB, "Auto Sell",             "BLADEX_autosell",     "AutoSell",          "AutoSell",          loopAutoSell)
 
 local SU = mainTab:DrawSection({ Name = "Upgrades", Position = "right", Minimized = true })
-tog(SU, "Auto Upgrade Plot",  "BLADEX_autoupplot",  "AutoUpgradePlot", "AutoUpgradePlot", loopUpgradePlot)
-tog(SU, "Auto x2 Stamina",    "BLADEX_autox2stam",  "AutoX2Stamina",   "AutoX2Stamina",   loopX2Stamina)
-tog(SU, "Auto Rebirth",       "BLADEX_autorebirth", "AutoRebirth",     "AutoRebirth",     loopRebirth)
+tog(SU, "Auto Upgrade Plot", "BLADEX_autoupplot",  "AutoUpgradePlot", "AutoUpgradePlot", loopUpgradePlot)
+tog(SU, "Auto x2 Stamina",   "BLADEX_autox2stam",  "AutoX2Stamina",   "AutoX2Stamina",   loopX2Stamina)
+tog(SU, "Auto Rebirth",      "BLADEX_autorebirth", "AutoRebirth",     "AutoRebirth",     loopRebirth)
 
 startLoop("KEPO", loopKEPO)
 
