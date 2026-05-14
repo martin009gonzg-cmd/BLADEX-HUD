@@ -71,16 +71,11 @@ local function _BLADEX_INIT()
     end
 
     local DEFAULT_GAMES = {
-        [124473577469410] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block",          name = "Lucky Block Sim"},
-        [134190049316507] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",     name = "Spear a Brainrots"},
-        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower",  name = "Brainrot Morph Tower"},
-        [136066387156306] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/FlashForBrainrot",          name = "Be A Flash For Brainrot"},
-
-        -- RANURA 2 (pendiente)
-        -- [000000000000000] = {url = "", name = ""},
-
-        -- RANURA 3 (pendiente)
-        -- [000000000000000] = {url = "", name = ""},
+        [124473577469410] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Be_a_Lucky_Block",         name = "Lucky Block Sim"},
+        [134190049316507] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Spear%20a%20Brainrots",    name = "Spear a Brainrots"},
+        [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower", name = "Brainrot Morph Tower"},
+        [136066387156306] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/FlashForBrainrot",         name = "Be A Flash For Brainrot"},
+        [139054513518556] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BeAHair",                  name = "Be A Hair"},
     }
 
     if _getgenv()._BLADEX_LOADING then
