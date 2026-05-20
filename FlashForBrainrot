@@ -184,22 +184,42 @@ local function loopFarmBrain()
                 zonaActual = nuevaZona
             end
 
-            hrp.CFrame = CFrame.new(zonaActual.pos)
-            task.wait(0.3)
-
             if DE then pcall(function() DE:FireServer("EndWarp") end) end
-            task.wait(0.3)
+            task.wait(0.5)
+
+            hrp.CFrame = CFrame.new(zonaActual.pos)
+            task.wait(0.5)
 
             if DE then pcall(function() DE:FireServer("StartCharge") end) end
-            task.wait(0.8)
+            task.wait(0.9)
             if DE then pcall(function() DE:FireServer(3) end) end
 
+            local scanActivo = true
+            local buffThread = task.spawn(function()
+                while scanActivo and _G.AutoFarmBrainrots do
+                    local parts = infGetParts()
+                    for _, part in ipairs(parts) do
+                        if not scanActivo then break end
+                        local key = infGetRarity(part)
+                        if key == "+1" or key == "+2" then
+                            infTouch(part, hrp)
+                            task.wait(0.15)
+                        end
+                    end
+                    task.wait(INF_SCAN_DLY)
+                end
+            end)
+
             local ok, nombre = esperarBrainrot(10)
+
+            scanActivo = false
+            pcall(task.cancel, buffThread)
+
             if ok then
-            else
+                notify("Brainrot: " .. nombre, 3)
             end
 
-            task.wait(0.2)
+            task.wait(0.8)
         else
             task.wait(1)
         end
@@ -647,10 +667,15 @@ local function loopInfinityFarm()
     while _G.AutoInfinityFarm do
         local char, hrp = getFarmCharacter()
         if not hrp then task.wait(1) continue end
+
+        -- Resetear estado antes de empezar (lógica Trinity)
+        if DE then pcall(DE.FireServer, DE, "EndWarp") end
+        task.wait(0.6)
         if DE then pcall(DE.FireServer, DE, "StartCharge") end
-        task.wait(0.5)
+        task.wait(0.8)
         if DE then pcall(DE.FireServer, DE, 3) end
-        task.wait(0.3)
+        task.wait(0.5)
+
         local rainbowTouched = false
         while _G.AutoInfinityFarm do
             local tier = infGetTier()
@@ -665,10 +690,10 @@ local function loopInfinityFarm()
                 if key == "rainbow" and not rainbowTouched then
                     infTouch(part, hrp)
                     rainbowTouched = true
-                    task.wait(0.3)
+                    task.wait(0.4)
                 elseif key == "+2" or key == "+1" then
                     infTouch(part, hrp)
-                    task.wait(0.1)
+                    task.wait(0.15)
                 end
             end
             task.wait(INF_SCAN_DLY)
@@ -676,7 +701,7 @@ local function loopInfinityFarm()
 
         if not _G.AutoInfinityFarm then break end
         if DE then pcall(DE.FireServer, DE, "EndWarp") end
-        task.wait(1.2)
+        task.wait(1.8)
     end
 end
 
