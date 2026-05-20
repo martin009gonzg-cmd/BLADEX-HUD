@@ -767,6 +767,12 @@ settingsSection:AddDropdown({ Name = "Select Theme", Default = "Default",
         local color = themes[v] or themes.Default
         Compkiller:ChangeHighlightColor(color)
     end })
+settingsSection:AddButton({
+    Name     = "Get Theme",
+    Callback = function()
+        print(Compkiller:GetTheme())
+    end
+})
 settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
