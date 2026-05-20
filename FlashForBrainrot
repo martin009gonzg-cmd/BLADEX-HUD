@@ -215,9 +215,7 @@ local function loopFarmBrain()
             scanActivo = false
             pcall(task.cancel, buffThread)
 
-            if ok then
-                notify("Brainrot: " .. nombre, 3)
-            end
+            _ = ok
 
             task.wait(0.8)
         else
@@ -734,7 +732,7 @@ end
 
 local SB = mainTab:DrawSection({ Name = "Brainrots", Position = "left",  Minimized = true })
 tog(SB, "Auto Farm Brainrots",   "BLADEX_autofarmb",    "AutoFarmBrainrots", "AutoFarmBrainrots", loopFarmBrain)
-tog(SB, "Auto Infinity Farm",    "BLADEX_infinityfarm", "AutoInfinityFarm",  "AutoInfinityFarm",  loopInfinityFarm)
+tog(SB, "Auto Trinity Farm",     "BLADEX_infinityfarm", "AutoInfinityFarm",  "AutoInfinityFarm",  loopInfinityFarm)
 tog(SB, "Auto Collect Cash",     "BLADEX_autocash",     "AutoCollectCash",   "AutoCollectCash",   loopCollectCash)
 tog(SB, "Auto Upgrade Brainrot", "BLADEX_autoupbrain",  "AutoUpgradeBrain",  "AutoUpgradeBrain",  loopUpgradeBrain)
 tog(SB, "Auto Pickup",           "BLADEX_autopickup",   "AutoPickup",        "AutoPickup",        loopAutoPickup)
@@ -748,6 +746,16 @@ tog(SU, "Auto Rebirth",      "BLADEX_autorebirth", "AutoRebirth",     "AutoRebir
 startLoop("KEPO", loopKEPO)
 
 Window:DrawCategory({ Name = "Extra" })
+
+local settingsTab = Window:DrawTab({ Name = "Settings", Icon = "settings", Type = "Single", EnableScrolling = false })
+local settingsSec = settingsTab:DrawSection({ Name = "Settings", Position = "left", Minimized = true })
+settingsSec:AddButton({
+    Name     = "Get Theme",
+    Callback = function()
+        print(Compkiller:GetTheme())
+    end
+})
+
 Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
 
 _BLADEX_LOADING = false
