@@ -747,14 +747,27 @@ startLoop("KEPO", loopKEPO)
 
 Window:DrawCategory({ Name = "Extra" })
 
-local settingsTab = Window:DrawTab({ Name = "Settings", Icon = "settings", Type = "Single", EnableScrolling = false })
-local settingsSec = settingsTab:DrawSection({ Name = "Settings", Position = "left", Minimized = true })
-settingsSec:AddButton({
-    Name     = "Get Theme",
-    Callback = function()
-        print(Compkiller:GetTheme())
-    end
-})
+local settingsTab = Window:DrawTab({ Name = "Ajustes", Icon = "settings", Type = "Single" })
+local settingsSection = settingsTab:DrawSection({ Name = "UI Settings", Position = "full", Minimized = true })
+settingsSection:AddToggle({ Name = "Always Show Frame", Default = false,
+    Risky    = false,
+    Callback = function(v) pcall(function() Window.AlwaysShowTab = v end) end })
+settingsSection:AddColorPicker({ Name = "Highlight", Default = Compkiller.Colors.Highlight,
+    Callback = function(v) Compkiller:ChangeHighlightColor(v) end })
+local themes = {
+    Default         = Color3.fromRGB(90, 110, 160),
+    ["Dark Green"]  = Color3.fromRGB(60, 150, 90),
+    ["Dark Blue"]   = Color3.fromRGB(50, 90, 200),
+    ["Purple Rose"] = Color3.fromRGB(160, 80, 160),
+    Skeet           = Color3.fromRGB(200, 60, 60),
+}
+settingsSection:AddDropdown({ Name = "Select Theme", Default = "Default",
+    Values   = { "Default", "Dark Green", "Dark Blue", "Purple Rose", "Skeet" },
+    Callback = function(v)
+        local color = themes[v] or themes.Default
+        Compkiller:ChangeHighlightColor(color)
+    end })
+settingsSection:AddLabel("BLADEX HUD v6 | Be a Lucky Block")
 
 Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
 
