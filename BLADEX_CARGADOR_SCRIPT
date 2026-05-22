@@ -76,7 +76,7 @@ local function _BLADEX_INIT()
         [82338709069161]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Brainrot%20Morph%20Tower", name = "Brainrot Morph Tower"},
         [136066387156306] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/FlashForBrainrot",         name = "Be A Flash For Brainrot"},
         [139054513518556] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BeAHair",                  name = "Be A Hair"},
-        [1234567890] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/UpgradeLuckyBlock", name = "UpgradeLuckyBlock"},
+        [11030882298123] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/UpgradeLuckyBlock", name = "UpgradeLuckyBlock"},
     }
 
     if _getgenv()._BLADEX_LOADING then
