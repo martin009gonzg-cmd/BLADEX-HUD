@@ -21,7 +21,7 @@ jobs:
           # │  Crea un secreto llamado exactamente: DISCORD_WEBHOOK        │
           # │  Y pega ahí tu URL: https://discord.com/api/webhooks/...     │
           # └─────────────────────────────────────────────────────────────┘
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          DISCORD_WEBHOOK: ${{ https://discord.com/api/webhooks/1507711633802264718/60BeVZWShEmISQucCHzX4924Ii8B9c6LTJqHC0Wzqy2DAsOXqbCAUuo2EwpKQ9WuFE0j }}
         run: |
           python3 << 'EOF'
           import subprocess, json, os
