@@ -1,0 +1,100 @@
+name: BLADEX Discord Notify
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.lua'
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detectar script y notificar
+        env:
+          # ┌─────────────────────────────────────────────────────────────┐
+          # │  Ve a tu repo → Settings → Secrets and variables → Actions  │
+          # │  Crea un secreto llamado exactamente: DISCORD_WEBHOOK        │
+          # │  Y pega ahí tu URL: https://discord.com/api/webhooks/...     │
+          # └─────────────────────────────────────────────────────────────┘
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          python3 << 'EOF'
+          import subprocess, json, os
+          import urllib.request
+
+          # ── Mapeo archivo → nombre del juego ──────────────────────────
+          GAMES = {
+              "be_a_lucky_block":   "Be A Lucky Block",
+              "lucky_block":        "Be A Lucky Block",
+              "fly_for_brainrots":  "Fly For Brainrots",
+              "fly_brainrot":       "Fly For Brainrots",
+              "reel_a_brainrot":    "Reel A Brainrot",
+              "spear_a_brainrot":   "Spear A Brainrot",
+              "jump_tower":         "Jump Tower Simulator",
+              "be_a_flash":         "Be A Flash For Brainrot",
+              "flash_brainrot":     "Be A Flash For Brainrot",
+          }
+
+          # ── Archivos .lua modificados ──────────────────────────────────
+          diff = subprocess.run(
+              ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+              capture_output=True, text=True
+          ).stdout.strip().split("\n")
+
+          lua_files = [f for f in diff if f.endswith(".lua")]
+
+          # ── Detectar juego desde el nombre del archivo ─────────────────
+          game_name = "Script BLADEX"
+          for filepath in lua_files:
+              base = os.path.splitext(os.path.basename(filepath))[0].lower()
+              for key, name in GAMES.items():
+                  if key.lower() in base:
+                      game_name = name
+                      break
+
+          # ── Parsear commit: "TIPO | [+] Cambio1 | [+] Cambio2" ────────
+          commit = subprocess.run(
+              ["git", "log", "-1", "--pretty=%B"],
+              capture_output=True, text=True
+          ).stdout.strip()
+
+          parts = [p.strip() for p in commit.split("|")]
+          update_type = parts[0] if parts else "ACTUALIZACIÓN"
+          changes     = parts[1:] if len(parts) > 1 else ["Sin descripción"]
+
+          changes_block = "\n".join(f"**{c}**" for c in changes)
+
+          # ── Construir embed ────────────────────────────────────────────
+          description = (
+              f"**{update_type}**\n"
+              f"{changes_block}\n\n"
+              f"¿Reportar Bug o Sugerencia?\n"
+              f"https://discord.com/channels/1469716119588835392/1499164464782643211"
+              f" & <#1486060543084069086>"
+          )
+
+          payload = {
+              "username": "BLADEX HUD",
+              "embeds": [{
+                  "title": f"🔔  {game_name}",
+                  "description": description,
+                  "color": 0xE8000A,
+                  "footer": {
+                      "text": "BLADEX HUD  •  Sistema de Updates"
+                  }
+              }]
+          }
+
+          data = json.dumps(payload).encode("utf-8")
+          req  = urllib.request.Request(
+              os.environ["DISCORD_WEBHOOK"], data=data,
+              headers={"Content-Type": "application/json"}
+          )
+          urllib.request.urlopen(req)
+          print(f"✅ Notificado: {game_name} — {update_type}")
+          EOF
