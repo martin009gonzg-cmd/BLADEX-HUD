@@ -1,0 +1,26 @@
+name: Notify Discord on Push
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord Notification
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          AUTHOR: ${{ github.event.head_commit.author.name }}
+        run: |
+          curl -H "Content-Type: application/json" -X POST \
+          -d "{
+            \"username\": \"BLADEX HUD\",
+            \"embeds\": [{
+              \"title\": \"⚔️ Nueva actualización BLADEX\",
+              \"description\": \"$COMMIT_MSG\",
+              \"color\": 5763719,
+              \"footer\": { \"text\": \"Por $AUTHOR\" }
+            }]
+          }" \
+          ${{ https://discord.com/api/webhooks/1507711633802264718/60BeVZWShEmISQucCHzX4924Ii8B9c6LTJqHC0Wzqy2DAsOXqbCAUuo2EwpKQ9WuFE0j }}
