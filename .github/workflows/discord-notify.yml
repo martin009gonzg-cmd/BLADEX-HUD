@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '**.lua'
+  workflow_dispatch:          # ← permite ejecutarlo manualmente desde Actions
 
 permissions:
   contents: write
@@ -42,7 +43,6 @@ jobs:
 
           CHANGELOG_FILE = "bladex_changelog.json"
 
-          # ── Cargar memoria ─────────────────────────────────────────────
           if os.path.exists(CHANGELOG_FILE):
               with open(CHANGELOG_FILE, "r") as f:
                   announced = json.load(f)
@@ -51,7 +51,6 @@ jobs:
               announced = {}
               print("📂 Changelog nuevo (vacío)")
 
-          # ── Detectar archivos .lua modificados (con protección HEAD~1) ─
           total_commits = subprocess.run(
               ["git", "rev-list", "--count", "HEAD"],
               capture_output=True, text=True
@@ -67,7 +66,6 @@ jobs:
           lua_files = [f for f in diff if f.endswith(".lua")]
           print(f"📄 Archivos .lua modificados: {lua_files}")
 
-          # ── Detectar juego ─────────────────────────────────────────────
           game_name = "Script BLADEX"
           for filepath in lua_files:
               base = os.path.splitext(os.path.basename(filepath))[0].lower()
@@ -77,7 +75,6 @@ jobs:
                       break
           print(f"🎮 Juego detectado: {game_name}")
 
-          # ── Parsear commit ─────────────────────────────────────────────
           commit = subprocess.run(
               ["git", "log", "-1", "--pretty=%B"],
               capture_output=True, text=True
@@ -93,7 +90,6 @@ jobs:
               print("⏭ Sin cambios en el commit (falta el formato TIPO | [+] Cambio). Omitiendo.")
               exit(0)
 
-          # ── Filtrar solo cambios nuevos ────────────────────────────────
           key     = f"{game_name}|{update_type}"
           already = set(announced.get(key, []))
           new_changes = [c for c in all_changes if c not in already]
@@ -103,7 +99,6 @@ jobs:
               print("⏭ Sin cambios nuevos. Ya fueron anunciados antes.")
               exit(0)
 
-          # ── Construir y enviar embed ───────────────────────────────────
           changes_list = "\n".join(new_changes)
           description = (
               f"**{update_type}**\n"
@@ -131,7 +126,6 @@ jobs:
           urllib.request.urlopen(req)
           print(f"✅ Mensaje enviado a Discord correctamente")
 
-          # ── Actualizar memoria ─────────────────────────────────────────
           announced[key] = list(already | set(all_changes))
           with open(CHANGELOG_FILE, "w") as f:
               json.dump(announced, f, indent=2, ensure_ascii=False)
