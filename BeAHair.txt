@@ -1,0 +1,342 @@
+if not Compkiller then return end
+
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+local function notify(content, duration)
+    if _BLADEX_LOADING then return end
+    Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-BeAHair",
+})
+
+local RS          = game:GetService("ReplicatedStorage")
+local Players     = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local Events     = RS:WaitForChild("Events", 10)
+local remSell    = Events and Events:WaitForChild("RequestSell", 10)
+local remRebirth = Events and Events:WaitForChild("RequestRebirth", 10)
+local remBaseUpg = Events and Events:WaitForChild("RequestBaseUpgrade", 10)
+local remSlotUpg = Events and Events:WaitForChild("RequestSlotUpgrade", 10)
+local remEscape  = Events and Events:WaitForChild("RewardEscape", 10)
+
+local CHARACTERS = {
+    { name = "Mr. Tanaka",        rarity = "Common"    },
+    { name = "Mr. Chen",          rarity = "Common"    },
+    { name = "Mr.Wong",           rarity = "Common"    },
+    { name = "Mr. Kim",           rarity = "Common"    },
+    { name = "Mr. Park",          rarity = "Common"    },
+    { name = "Mr. Singh",         rarity = "Common"    },
+    { name = "What the ?",        rarity = "Common"    },
+    { name = "Mr. Lu",            rarity = "Common"    },
+    { name = "Mr. Khan",          rarity = "Common"    },
+    { name = "Jackie Chen",       rarity = "Common"    },
+    { name = "Uncle Kantai",      rarity = "Uncommon"  },
+    { name = "Buddha",            rarity = "Uncommon"  },
+    { name = "Abbot",             rarity = "Uncommon"  },
+    { name = "McRonald",          rarity = "Uncommon"  },
+    { name = "Colonel",           rarity = "Uncommon"  },
+    { name = "Uncle Einstein",    rarity = "Uncommon"  },
+    { name = "Uncle Jackson",     rarity = "Uncommon"  },
+    { name = "Uncle Lu",          rarity = "Uncommon"  },
+    { name = "Uncle Rock",        rarity = "Uncommon"  },
+    { name = "Uncle Mike",        rarity = "Rare"      },
+    { name = "Most wanted uncle", rarity = "Rare"      },
+    { name = "Uncle Eric",        rarity = "Rare"      },
+    { name = "Someone's father",  rarity = "Rare"      },
+    { name = "Mr. Billy",         rarity = "Rare"      },
+    { name = "Mr. Koi",           rarity = "Rare"      },
+    { name = "Uncle Koi",         rarity = "Rare"      },
+    { name = "Sir Girafee",       rarity = "Epic"      },
+    { name = "Uncle Tokugawa",    rarity = "Epic"      },
+    { name = "Uncle Pirate",      rarity = "Epic"      },
+    { name = "Alien",             rarity = "Epic"      },
+    { name = "Uncle Juntaro",     rarity = "Epic"      },
+    { name = "Mr. Musk",          rarity = "Epic"      },
+    { name = "Sensai B.C",        rarity = "Epic"      },
+    { name = "Dora A Man",        rarity = "Epic"      },
+    { name = "Uncle Dave",        rarity = "Legendary" },
+    { name = "Mr. Pea",           rarity = "Legendary" },
+    { name = "Mr. Piranha Plant", rarity = "Legendary" },
+    { name = "Uncle Gecko",       rarity = "Legendary" },
+    { name = "Uncle Fuk",         rarity = "Legendary" },
+    { name = "Quadruplets",       rarity = "Mythical"  },
+    { name = "Dr. Tesla",         rarity = "Mythical"  },
+    { name = "Your highness",     rarity = "Mythical"  },
+    { name = "Sir Adam",          rarity = "Mythical"  },
+    { name = "Mr. P Peach",       rarity = "Mythical"  },
+    { name = "Dr. Hu (Who?)",     rarity = "Secret"    },
+    { name = "Mr. Dalek",         rarity = "Secret"    },
+}
+
+local function getRarity(name)
+    for _, c in ipairs(CHARACTERS) do
+        if c.name == name then return c.rarity end
+    end
+    return "Common"
+end
+
+local PARTICLES = { "Neon", "Diamond", "Ruby", "Golden", "Rich" }
+
+_G.SelectedCharRaw  = "Mr. Dalek"
+_G.SelectedParticle = "Rich"
+
+local function notifySel()
+    notify(_G.SelectedCharRaw .. " (" .. getRarity(_G.SelectedCharRaw) .. ") | " .. _G.SelectedParticle, 4)
+end
+
+local function startAutoSell()
+    task.spawn(function()
+        while _G.AutoSell do
+            if remSell then
+                pcall(remSell.FireServer, remSell, "Inventory")
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+local function startAutoRebirth()
+    task.spawn(function()
+        while _G.AutoRebirth do
+            if remRebirth then
+                pcall(remRebirth.FireServer, remRebirth)
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function startAutoBaseUpgrade()
+    task.spawn(function()
+        while _G.AutoBaseUpgrade do
+            if remBaseUpg then
+                pcall(remBaseUpg.FireServer, remBaseUpg)
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+local function startAutoSlotUpgrade()
+    task.spawn(function()
+        while _G.AutoSlotUpgrade do
+            if remSlotUpg then
+                for floor = 1, 3 do
+                    for slot = 1, 10 do
+                        if not _G.AutoSlotUpgrade then break end
+                        pcall(remSlotUpg.FireServer, remSlotUpg,
+                            "Floor" .. floor, "Slot" .. slot)
+                        task.wait(0.15)
+                    end
+                end
+            end
+            task.wait(0.5)
+        end
+    end)
+end
+
+local function startAutoCollect()
+    task.spawn(function()
+        while _G.AutoCollect do
+            local char = LocalPlayer.Character
+            local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+            local plot = workspace:FindFirstChild("Plot_" .. LocalPlayer.Name)
+            if hrp and plot then
+                for floor = 1, 3 do
+                    local floorObj = plot:FindFirstChild("Floor" .. floor)
+                    if floorObj then
+                        local slotsFolder = floorObj:FindFirstChild("Slots")
+                        if slotsFolder then
+                            for slot = 1, 10 do
+                                if not _G.AutoCollect then break end
+                                local slotObj = slotsFolder:FindFirstChild("Slot" .. slot)
+                                if slotObj then
+                                    local ct = slotObj:FindFirstChild("CollectTouch")
+                                    if ct then
+                                        firetouchinterest(hrp, ct, 0)
+                                        task.wait(0.05)
+                                        firetouchinterest(hrp, ct, 1)
+                                        task.wait(0.05)
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function startAutoEscape()
+    task.spawn(function()
+        while _G.AutoEscape do
+            if remEscape then
+                pcall(remEscape.FireServer, remEscape)
+            end
+            task.wait(1)
+        end
+    end)
+end
+
+local function doEquip()
+    if remEscape and _G.SelectedCharRaw then
+        local rarity = getRarity(_G.SelectedCharRaw)
+        pcall(remEscape.FireServer, remEscape, _G.SelectedCharRaw, _G.SelectedParticle, rarity)
+    end
+end
+
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local TabMain = Window:DrawTab({ Name = "Be A Hair", Icon = "lucide-sword" })
+
+local CHAR_NAMES = {}
+for _, c in ipairs(CHARACTERS) do
+    table.insert(CHAR_NAMES, c.name)
+end
+
+local SecSel = TabMain:DrawSection({ Name = "Seleccion", Minimized = true, Side = "Left" })
+SecSel:AddDropdown({
+    Name     = "Personaje",
+    Default  = "Mr. Dalek",
+    Values   = CHAR_NAMES,
+    Multi    = false,
+    Callback = function(v)
+        _G.SelectedCharRaw = v
+        notifySel()
+    end
+})
+SecSel:AddDropdown({
+    Name     = "Particula",
+    Default  = "Rich",
+    Values   = PARTICLES,
+    Multi    = false,
+    Callback = function(v)
+        _G.SelectedParticle = v
+        notifySel()
+    end
+})
+SecSel:AddButton({
+    Name     = "Obtener",
+    Callback = function()
+        doEquip()
+        notify("Equipando: " .. (_G.SelectedCharRaw or "?") .. " | " .. (_G.SelectedParticle or "?"), 3)
+    end
+})
+
+local SecAcciones = TabMain:DrawSection({ Name = "Acciones", Minimized = true, Side = "Right" })
+
+SecAcciones:AddToggle({
+    Name     = "Auto Collect",
+    Flag     = "BLADEX_autocollect",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoCollect = v
+        if v then
+            notify("Auto Collect activado", 3)
+            startAutoCollect()
+        else
+            notify("Auto Collect desactivado", 3)
+        end
+    end
+})
+SecAcciones:AddToggle({
+    Name     = "Auto Escape",
+    Flag     = "BLADEX_autoescape",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoEscape = v
+        if v then
+            notify("Auto Escape activado", 3)
+            startAutoEscape()
+        else
+            notify("Auto Escape desactivado", 3)
+        end
+    end
+})
+SecAcciones:AddToggle({
+    Name     = "Auto Sell",
+    Flag     = "BLADEX_autosell",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoSell = v
+        if v then
+            notify("Auto Sell activado", 3)
+            startAutoSell()
+        else
+            notify("Auto Sell desactivado", 3)
+        end
+    end
+})
+SecAcciones:AddToggle({
+    Name     = "Auto Rebirth",
+    Flag     = "BLADEX_autorebirth",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoRebirth = v
+        if v then
+            notify("Auto Rebirth activado", 3)
+            startAutoRebirth()
+        else
+            notify("Auto Rebirth desactivado", 3)
+        end
+    end
+})
+SecAcciones:AddToggle({
+    Name     = "Auto Base Upgrade",
+    Flag     = "BLADEX_autobaseupgrade",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoBaseUpgrade = v
+        if v then
+            notify("Auto Base Upgrade activado", 3)
+            startAutoBaseUpgrade()
+        else
+            notify("Auto Base Upgrade desactivado", 3)
+        end
+    end
+})
+SecAcciones:AddToggle({
+    Name     = "Auto Slot Upgrade",
+    Flag     = "BLADEX_autoslotupgrade",
+    Risky    = false,
+    Config   = ConfigManager,
+    Callback = function(v)
+        _G.AutoSlotUpgrade = v
+        if v then
+            notify("Auto Slot Upgrade activado", 3)
+            startAutoSlotUpgrade()
+        else
+            notify("Auto Slot Upgrade desactivado", 3)
+        end
+    end
+})
+
+Window:DrawCategory({ Name = "Extra" })
+
+Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
+
+_BLADEX_LOADING = false
+notify("Be A Hair cargado!", 5)
