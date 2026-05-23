@@ -26,7 +26,8 @@ jobs:
           import subprocess, json, os
           import urllib.request
 
-          # ── Mapeo archivo → nombre del juego ──────────────────────────
+          print("▶ Iniciando BLADEX Notify...")
+
           GAMES = {
               "be_a_lucky_block":  "Be A Lucky Block",
               "lucky_block":       "Be A Lucky Block",
@@ -41,20 +42,30 @@ jobs:
 
           CHANGELOG_FILE = "bladex_changelog.json"
 
-          # ── Cargar memoria de cambios ya anunciados ────────────────────
+          # ── Cargar memoria ─────────────────────────────────────────────
           if os.path.exists(CHANGELOG_FILE):
               with open(CHANGELOG_FILE, "r") as f:
                   announced = json.load(f)
+              print(f"📂 Changelog cargado: {list(announced.keys())}")
           else:
               announced = {}
+              print("📂 Changelog nuevo (vacío)")
 
-          # ── Archivos .lua modificados ──────────────────────────────────
-          diff = subprocess.run(
-              ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
+          # ── Detectar archivos .lua modificados (con protección HEAD~1) ─
+          total_commits = subprocess.run(
+              ["git", "rev-list", "--count", "HEAD"],
               capture_output=True, text=True
-          ).stdout.strip().split("\n")
+          ).stdout.strip()
 
+          if int(total_commits) < 2:
+              print("⚠ Primer commit del repo, usando HEAD como base")
+              diff_cmd = ["git", "diff", "--name-only", "HEAD"]
+          else:
+              diff_cmd = ["git", "diff", "--name-only", "HEAD~1", "HEAD"]
+
+          diff = subprocess.run(diff_cmd, capture_output=True, text=True).stdout.strip().split("\n")
           lua_files = [f for f in diff if f.endswith(".lua")]
+          print(f"📄 Archivos .lua modificados: {lua_files}")
 
           # ── Detectar juego ─────────────────────────────────────────────
           game_name = "Script BLADEX"
@@ -64,33 +75,36 @@ jobs:
                   if key.lower() in base:
                       game_name = name
                       break
+          print(f"🎮 Juego detectado: {game_name}")
 
           # ── Parsear commit ─────────────────────────────────────────────
           commit = subprocess.run(
               ["git", "log", "-1", "--pretty=%B"],
               capture_output=True, text=True
           ).stdout.strip()
+          print(f"📝 Commit: {commit}")
 
           parts       = [p.strip() for p in commit.split("|")]
           update_type = parts[0] if parts else "ACTUALIZACIÓN"
           all_changes = parts[1:] if len(parts) > 1 else []
+          print(f"🔧 Tipo: {update_type} | Cambios: {all_changes}")
 
           if not all_changes:
-              print("Sin cambios en el commit, omitiendo.")
+              print("⏭ Sin cambios en el commit (falta el formato TIPO | [+] Cambio). Omitiendo.")
               exit(0)
 
-          # ── Filtrar solo cambios NUEVOS (no anunciados antes) ──────────
-          key = f"{game_name}|{update_type}"
+          # ── Filtrar solo cambios nuevos ────────────────────────────────
+          key     = f"{game_name}|{update_type}"
           already = set(announced.get(key, []))
           new_changes = [c for c in all_changes if c not in already]
+          print(f"🆕 Cambios nuevos: {new_changes}")
 
           if not new_changes:
-              print("No hay cambios nuevos que anunciar.")
+              print("⏭ Sin cambios nuevos. Ya fueron anunciados antes.")
               exit(0)
 
-          # ── Construir mensaje con el formato exacto ────────────────────
+          # ── Construir y enviar embed ───────────────────────────────────
           changes_list = "\n".join(new_changes)
-
           description = (
               f"**{update_type}**\n"
               f"{changes_list}\n\n"
@@ -105,26 +119,23 @@ jobs:
                   "title": f"**{game_name}**",
                   "description": description,
                   "color": 0xE8000A,
-                  "footer": {
-                      "text": "BLADEX HUD  •  Sistema de Updates"
-                  }
+                  "footer": {"text": "BLADEX HUD  •  Sistema de Updates"}
               }]
           }
 
-          # ── Enviar a Discord ───────────────────────────────────────────
           data = json.dumps(payload).encode("utf-8")
           req  = urllib.request.Request(
               os.environ["DISCORD_WEBHOOK"], data=data,
               headers={"Content-Type": "application/json"}
           )
           urllib.request.urlopen(req)
-          print(f"✅ Enviado: {game_name} — {update_type} — {new_changes}")
+          print(f"✅ Mensaje enviado a Discord correctamente")
 
           # ── Actualizar memoria ─────────────────────────────────────────
           announced[key] = list(already | set(all_changes))
           with open(CHANGELOG_FILE, "w") as f:
               json.dump(announced, f, indent=2, ensure_ascii=False)
-
+          print("💾 Changelog actualizado")
           EOF
 
       - name: Guardar memoria de cambios
