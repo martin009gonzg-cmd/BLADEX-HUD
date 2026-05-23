@@ -8,19 +8,67 @@ jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: Send Discord Notification
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detectar funciones nuevas y notificar
         env:
+          WEBHOOK_URL: "https://discord.com/api/webhooks/15077.../60BeV..."
           COMMIT_MSG: ${{ github.event.head_commit.message }}
           AUTHOR: ${{ github.event.head_commit.author.name }}
         run: |
-          curl -H "Content-Type: application/json" -X POST \
-          -d "{
-            \"username\": \"BLADEX HUD\",
-            \"embeds\": [{
-              \"title\": \"⚔️ Nueva actualización BLADEX\",
-              \"description\": \"$COMMIT_MSG\",
-              \"color\": 5763719,
-              \"footer\": { \"text\": \"Por $AUTHOR\" }
+          python3 << 'EOF'
+          import subprocess, json, re, os, urllib.request
+
+          # Obtener diff solo de archivos .lua
+          diff = subprocess.run(
+            ["git", "diff", "HEAD~1", "HEAD", "--", "*.lua", "--unified=0"],
+            capture_output=True, text=True
+          ).stdout
+
+          # Detectar solo líneas AÑADIDAS con toggles/secciones
+          features = []
+          for line in diff.split('\n'):
+            if not line.startswith('+') or line.startswith('+++'):
+              continue
+            # Detecta AddToggle
+            m = re.search(r'AddToggle\s*\(\s*["\']([^"\']+)["\']', line)
+            if m:
+              features.append(m.group(1))
+              continue
+            # Detecta DrawSection
+            m = re.search(r'DrawSection\s*\(\s*["\']([^"\']+)["\']', line)
+            if m:
+              features.append(m.group(1))
+
+          commit_msg = os.environ.get('COMMIT_MSG', 'Actualización')
+          author    = os.environ.get('AUTHOR', 'BLADEX')
+          title     = commit_msg.split('\n')[0]
+
+          if features:
+            lista = '\n'.join(f'[+] Añadido {f}' for f in features)
+            desc = f"**NUEVA FUNCIÓN**\n\n{lista}\n\n🐛 Reportar Bug?\nhttps://discord.com/channels/1469716119588835392/1499164464782643211"
+          else:
+            desc = commit_msg
+
+          payload = {
+            "username": "BLADEX HUD",
+            "embeds": [{
+              "title": f"⚔️ {title}",
+              "description": desc,
+              "color": 5763719,
+              "footer": {"text": f"Por {author}"}
             }]
-          }" \
-          "https://discord.com/api/webhooks/1507711633802264718/60BeVZWShEmISQucCHzX4924Ii8B9c6LTJqHC0Wzqy2DAsOXqbCAUuo2EwpKQ9WuFE0j"
+          }
+
+          req = urllib.request.Request(
+            os.environ['WEBHOOK_URL'],
+            data=json.dumps(payload).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+          )
+          urllib.request.urlopen(req)
+          print("✅ Enviado a Discord")
+          EOF
