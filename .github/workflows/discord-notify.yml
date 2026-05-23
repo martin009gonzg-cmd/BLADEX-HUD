@@ -20,7 +20,7 @@ jobs:
 
       - name: Detectar cambios y notificar
         env:
-          DISCORD_WEBHOOK: https://discord.com/api/webhooks/TU_ID/TU_TOKEN
+          DISCORD_WEBHOOK: https://discord.com/api/webhooks/1507711633802264718/60BeVZWShEmISQucCHzX4924Ii8B9c6LTJqHC0Wzqy2DAsOXqbCAUuo2EwpKQ9WuFE0j
         run: |
           python3 << 'EOF'
           import subprocess, json, os
