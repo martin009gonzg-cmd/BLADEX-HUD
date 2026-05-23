@@ -1,5 +1,6 @@
 if not Compkiller then return end
 
+
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
