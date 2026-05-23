@@ -1,3 +1,0 @@
-curl -X POST https://discord.com/api/webhooks/1507711633802264718/60BeVZWShEmISQucCHzX4924Ii8B9c6LTJqHC0Wzqy2DAsOXqbCAUuo2EwpKQ9WuFE0j \
-  -H "Content-Type: application/json" \
-  -d '{"content": "HOLA"}'
