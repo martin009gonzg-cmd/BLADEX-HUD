@@ -16,18 +16,13 @@ jobs:
 
       - name: Detectar script y notificar
         env:
-          # ┌─────────────────────────────────────────────────────────────┐
-          # │  Ve a tu repo → Settings → Secrets and variables → Actions  │
-          # │  Crea un secreto llamado exactamente: DISCORD_WEBHOOK        │
-          # │  Y pega ahí tu URL: https://discord.com/api/webhooks/...     │
-          # └─────────────────────────────────────────────────────────────┘
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           python3 << 'EOF'
           import subprocess, json, os
           import urllib.request
 
-          # ── Mapeo archivo → nombre del juego ──────────────────────────
+          # Mapeo archivo -> nombre del juego
           GAMES = {
               "be_a_lucky_block":   "Be A Lucky Block",
               "lucky_block":        "Be A Lucky Block",
@@ -40,15 +35,24 @@ jobs:
               "flash_brainrot":     "Be A Flash For Brainrot",
           }
 
-          # ── Archivos .lua modificados ──────────────────────────────────
-          diff = subprocess.run(
+          # Obtener archivos .lua modificados
+          result = subprocess.run(
               ["git", "diff", "--name-only", "HEAD~1", "HEAD"],
               capture_output=True, text=True
-          ).stdout.strip().split("\n")
+          )
+          
+          if result.returncode != 0:
+              print(f"ERROR en git diff: {result.stderr}")
+              exit(1)
 
-          lua_files = [f for f in diff if f.endswith(".lua")]
+          diff = result.stdout.strip().split("\n")
+          lua_files = [f for f in diff if f and f.endswith(".lua")]
 
-          # ── Detectar juego desde el nombre del archivo ─────────────────
+          if not lua_files:
+              print("No hay archivos .lua modificados en este push")
+              exit(0)
+
+          # Detectar juego desde el nombre del archivo
           game_name = "Script BLADEX"
           for filepath in lua_files:
               base = os.path.splitext(os.path.basename(filepath))[0].lower()
@@ -57,44 +61,52 @@ jobs:
                       game_name = name
                       break
 
-          # ── Parsear commit: "TIPO | [+] Cambio1 | [+] Cambio2" ────────
-          commit = subprocess.run(
+          # Parsear commit: "TIPO | [+] Cambio1 | [+] Cambio2"
+          commit_result = subprocess.run(
               ["git", "log", "-1", "--pretty=%B"],
               capture_output=True, text=True
-          ).stdout.strip()
+          )
+          commit = commit_result.stdout.strip()
 
           parts = [p.strip() for p in commit.split("|")]
-          update_type = parts[0] if parts else "ACTUALIZACIÓN"
-          changes     = parts[1:] if len(parts) > 1 else ["Sin descripción"]
+          update_type = parts[0] if parts else "ACTUALIZACION"
+          changes = parts[1:] if len(parts) > 1 else ["Sin descripcion"]
 
           changes_block = "\n".join(f"**{c}**" for c in changes)
 
-          # ── Construir embed ────────────────────────────────────────────
+          # Construir descripcion del embed
           description = (
               f"**{update_type}**\n"
               f"{changes_block}\n\n"
-              f"¿Reportar Bug o Sugerencia?\n"
+              f"Reportar Bug o Sugerencia?\n"
               f"https://discord.com/channels/1469716119588835392/1499164464782643211"
-              f" & <#1486060543084069086>"
           )
 
           payload = {
               "username": "BLADEX HUD",
               "embeds": [{
-                  "title": f"🔔  {game_name}",
+                  "title": f"Notificacion: {game_name}",
                   "description": description,
                   "color": 0xE8000A,
                   "footer": {
-                      "text": "BLADEX HUD  •  Sistema de Updates"
+                      "text": "BLADEX HUD - Sistema de Updates"
                   }
               }]
           }
 
-          data = json.dumps(payload).encode("utf-8")
-          req  = urllib.request.Request(
-              os.environ["DISCORD_WEBHOOK"], data=data,
-              headers={"Content-Type": "application/json"}
-          )
-          urllib.request.urlopen(req)
-          print(f"✅ Notificado: {game_name} — {update_type}")
+          try:
+              data = json.dumps(payload).encode("utf-8")
+              req = urllib.request.Request(
+                  os.environ["DISCORD_WEBHOOK"],
+                  data=data,
+                  headers={"Content-Type": "application/json"}
+              )
+              urllib.request.urlopen(req)
+              print(f"OK: {game_name} - {update_type}")
+          except KeyError:
+              print("ERROR: Secret DISCORD_WEBHOOK no configurado")
+              exit(1)
+          except Exception as e:
+              print(f"ERROR enviando a Discord: {e}")
+              exit(1)
           EOF
