@@ -339,4 +339,5 @@ Window:DrawCategory({ Name = "Extra" })
 Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
 
 _BLADEX_LOADING = false
-notify("Be A Hair cargado!", 5)
+notify("Be A Hair cargado!", 5). 
+
