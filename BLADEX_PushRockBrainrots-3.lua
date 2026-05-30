@@ -1,0 +1,453 @@
+
+Compkiller:OptimizeMode(true)
+Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
+
+local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+local function notify(content, duration)
+    if _BLADEX_LOADING then return end
+    Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-PushRockBrainrots",
+})
+
+local RS      = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Events          = RS:WaitForChild("Events", 10)
+local upgradeChar     = Events and Events:WaitForChild("upgradeCharacterEvent", 10)
+local upgradesOpened  = Events and Events:WaitForChild("upgradesMenuOpened", 10)
+local buySolo         = Events and Events:WaitForChild("buySoloEvent", 10)
+local giftToolEvent   = Events and Events:WaitForChild("GiftToolEvent", 10)
+local promptGiftEvent = Events and Events:WaitForChild("PromptToolGiftEvent", 10)
+
+_G.AutoCollectCash     = false
+_G.AutoUpgradeBrainrot = false
+_G.AutoStrength        = false
+_G.AutoAcceptTrade     = false
+_G.AutoSendTrade       = false
+_G.AutoDupe            = false
+
+local selectedPlayer = nil
+local selectedItem   = "Trollface"
+local dupeAmount     = 1
+local activeThreads  = {}
+
+local function startLoop(name, fn)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+    activeThreads[name] = task.spawn(fn)
+end
+
+local function stopLoop(name)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+end
+
+local function getServerPlayers()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Players.LocalPlayer then
+            table.insert(list, p.Name)
+        end
+    end
+    if #list == 0 then table.insert(list, "(sin jugadores)") end
+    return list
+end
+
+local function getPlayerByName(name)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name == name then return p end
+    end
+    return nil
+end
+
+local function getMyBase()
+    local lp   = Players.LocalPlayer
+    local char = lp.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local bases = workspace:FindFirstChild("Bases")
+    if not bases then return nil end
+    local bestBase, bestDist = nil, math.huge
+    local playerPos = hrp.Position
+    for _, base in ipairs(bases:GetChildren()) do
+        local spawn = base:FindFirstChild("SpawnLocation")
+        if spawn then
+            local dist = (spawn.Position - playerPos).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                bestBase = base
+            end
+        end
+    end
+    return bestBase
+end
+
+local function isSpotUnlocked(spot)
+    local platform    = spot:FindFirstChild("Platform")
+    local upgradePart = platform and platform:FindFirstChild("UpgradePart")
+    return upgradePart and upgradePart:FindFirstChild("UpgradeSurfaceGui") ~= nil
+end
+
+local function getUnlockedSpots(base)
+    local result = {}
+    local spots = base:FindFirstChild("Spots")
+    if not spots then return result end
+    for _, spot in ipairs(spots:GetChildren()) do
+        local num = tonumber(spot.Name)
+        if num and isSpotUnlocked(spot) then
+            table.insert(result, { spot = spot, num = num })
+        end
+    end
+    table.sort(result, function(a, b) return a.num < b.num end)
+    return result
+end
+
+local function executeDupe()
+    local args = { [1] = 0/0 }
+    local ok1 = pcall(function()
+        RS.Events.setCharacterToSpotEvent:FireServer(unpack(args))
+    end)
+    task.wait(0.1)
+    local ok2 = pcall(function()
+        RS.Events.setCharacterToSpotEvent:FireServer(unpack(args))
+    end)
+    if ok1 and ok2 then
+        notify("Dupe ejecutado x" .. dupeAmount, 4)
+    else
+        notify("Error en Dupe", 4)
+    end
+end
+
+local function loopAutoCollectCash()
+    local lp = Players.LocalPlayer
+    while _G.AutoCollectCash do
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local base = getMyBase()
+            if base then
+                local unlocked = getUnlockedSpots(base)
+                for _, entry in ipairs(unlocked) do
+                    if not _G.AutoCollectCash then break end
+                    local btn    = entry.spot:FindFirstChild("Button")
+                    local hitbox = btn and btn:FindFirstChild("ButtonHitbox")
+                    if hitbox then
+                        pcall(function()
+                            hrp.CFrame = hitbox.CFrame * CFrame.new(0, 3, 0)
+                        end)
+                        task.wait(0.15)
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+local function loopAutoUpgradeBrainrot()
+    while _G.AutoUpgradeBrainrot do
+        local base = getMyBase()
+        if base and upgradeChar then
+            for slot = 1, 30 do
+                if not _G.AutoUpgradeBrainrot then break end
+                pcall(function()
+                    upgradeChar:FireServer(slot)
+                end)
+                task.wait(0.1)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+local function loopAutoStrength()
+    while _G.AutoStrength do
+        if buySolo then
+            pcall(function()
+                buySolo:FireServer(1)
+            end)
+        end
+        task.wait(0.1)
+    end
+end
+
+local function loopAutoAcceptTrade()
+    while _G.AutoAcceptTrade do
+        if giftToolEvent and selectedPlayer then
+            local target = getPlayerByName(selectedPlayer)
+            if target then
+                pcall(function()
+                    giftToolEvent:FireServer("Accept", target, selectedItem, tostring(os.time()) .. "_" .. selectedItem .. "_" .. tostring(math.random(1000000, 9999999)))
+                end)
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
+local function loopAutoSendTrade()
+    while _G.AutoSendTrade do
+        if promptGiftEvent and selectedPlayer then
+            local target = getPlayerByName(selectedPlayer)
+            if target then
+                pcall(function()
+                    promptGiftEvent:FireServer(target, selectedItem)
+                end)
+            end
+        end
+        task.wait(0.5)
+    end
+end
+
+Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+
+local Window = Compkiller.new({
+    Name     = "BLADEX HUD",
+    Keybind  = "LeftAlt",
+    Logo     = Compkiller.Logo,
+    Scale    = UDim2.new(0, 480, 0, 340),
+    TextSize = 15,
+})
+Window.Minimized = true
+
+local mainTab = Window:DrawTab({
+    Name            = "Push Rock Brainrots",
+    Icon            = "lucide-sword",
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local SecLeft  = mainTab:DrawSection({ Name = "Auto Farm", Position = "left",  Minimized = true })
+local SecRight = mainTab:DrawSection({ Name = "Upgrades",  Position = "right", Minimized = true })
+
+local collectToggle = SecLeft:AddToggle({
+    Name     = "Auto Collect Cash",
+    Default  = false,
+    Flag     = "BLADEX_autocollectcash",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoCollectCash = v
+        if v then
+            startLoop("AutoCollectCash", loopAutoCollectCash)
+            notify("Auto Collect Cash activado", 3)
+        else
+            stopLoop("AutoCollectCash")
+            notify("Auto Collect Cash desactivado", 3)
+        end
+    end
+})
+collectToggle:SetValue(false)
+
+local strengthToggle = SecLeft:AddToggle({
+    Name     = "Auto Strength",
+    Default  = false,
+    Flag     = "BLADEX_autostrength",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoStrength = v
+        if v then
+            startLoop("AutoStrength", loopAutoStrength)
+            notify("Auto Strength activado", 3)
+        else
+            stopLoop("AutoStrength")
+            notify("Auto Strength desactivado", 3)
+        end
+    end
+})
+strengthToggle:SetValue(false)
+
+local upgradeToggle = SecRight:AddToggle({
+    Name     = "Auto Upgrade Brainrot",
+    Default  = false,
+    Flag     = "BLADEX_autoupgradebrainrot",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoUpgradeBrainrot = v
+        if v then
+            startLoop("AutoUpgradeBrainrot", loopAutoUpgradeBrainrot)
+            notify("Auto Upgrade Brainrot activado", 3)
+        else
+            stopLoop("AutoUpgradeBrainrot")
+            notify("Auto Upgrade Brainrot desactivado", 3)
+        end
+    end
+})
+upgradeToggle:SetValue(false)
+
+local dupeTab = Window:DrawTab({
+    Name            = "Dupe",
+    Icon            = "lucide-copy",
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local SecDupe = dupeTab:DrawSection({ Name = "Dupe", Position = "left", Minimized = true })
+
+SecDupe:AddSlider({
+    Name     = "Amount",
+    Flag     = "BLADEX_dupeAmount",
+    Min      = 1,
+    Max      = 100,
+    Default  = 1,
+    Suffix   = "x",
+    Callback = function(val)
+        dupeAmount = val
+    end,
+})
+
+SecDupe:AddButton({
+    Name     = "DUPE",
+    Callback = function()
+        for i = 1, dupeAmount do
+            executeDupe()
+            task.wait(0.15)
+        end
+    end,
+})
+
+local SecAutoDupe = dupeTab:DrawSection({ Name = "Auto", Position = "right", Minimized = true })
+
+SecAutoDupe:AddToggle({
+    Name     = "Auto Dupe",
+    Flag     = "BLADEX_autoDupe",
+    Default  = false,
+    Risky    = false,
+    Callback = function(val)
+        _G.AutoDupe = val
+        if val then
+            startLoop("AutoDupe", function()
+                while _G.AutoDupe do
+                    executeDupe()
+                    task.wait(0.5)
+                end
+            end)
+        else
+            stopLoop("AutoDupe")
+        end
+    end,
+})
+
+local tradeTab = Window:DrawTab({
+    Name            = "Trade",
+    Icon            = "lucide-arrow-left-right",
+    Type            = "Single",
+    EnableScrolling = true,
+})
+
+local SecTrade = tradeTab:DrawSection({ Name = "Trade Tools", Position = "full", Minimized = true })
+
+local initialPlayers = getServerPlayers()
+selectedPlayer = initialPlayers[1] ~= "(sin jugadores)" and initialPlayers[1] or nil
+
+local playerDropdown
+playerDropdown = SecTrade:AddDropdown({
+    Name     = "Jugador objetivo",
+    Default  = initialPlayers[1],
+    Values   = initialPlayers,
+    Flag     = "BLADEX_tradeplayer",
+    Callback = function(v)
+        if v == "(sin jugadores)" then
+            selectedPlayer = nil
+        else
+            selectedPlayer = v
+        end
+    end
+})
+
+SecTrade:AddButton({
+    Name     = "Refresh jugadores",
+    Callback = function()
+        local nuevos = getServerPlayers()
+        pcall(function()
+            playerDropdown:Refresh(nuevos)
+            selectedPlayer = nuevos[1] ~= "(sin jugadores)" and nuevos[1] or nil
+        end)
+        notify("Jugadores actualizados: " .. #nuevos, 3)
+    end
+})
+
+SecTrade:AddToggle({
+    Name     = "Auto Send Trade",
+    Default  = false,
+    Flag     = "BLADEX_autosendtrade",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoSendTrade = v
+        if v then
+            if not selectedPlayer then
+                notify("Selecciona un jugador primero", 3)
+                return
+            end
+            startLoop("AutoSendTrade", loopAutoSendTrade)
+            notify("Auto Send Trade activado → " .. (selectedPlayer or "?"), 3)
+        else
+            stopLoop("AutoSendTrade")
+            notify("Auto Send Trade desactivado", 3)
+        end
+    end
+})
+
+SecTrade:AddToggle({
+    Name     = "Auto Accept Trade",
+    Default  = false,
+    Flag     = "BLADEX_autoaccepttrade",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoAcceptTrade = v
+        if v then
+            if not selectedPlayer then
+                notify("Selecciona un jugador primero", 3)
+                return
+            end
+            startLoop("AutoAcceptTrade", loopAutoAcceptTrade)
+            notify("Auto Accept Trade activado → " .. (selectedPlayer or "?"), 3)
+        else
+            stopLoop("AutoAcceptTrade")
+            notify("Auto Accept Trade desactivado", 3)
+        end
+    end
+})
+
+Window:DrawCategory({ Name = "Extra" })
+
+local ajustesTab = Window:DrawTab({
+    Name = "Ajustes",
+    Icon = "settings",
+    Type = "Single",
+})
+
+local SecAjustes = ajustesTab:DrawSection({ Name = "UI Settings", Position = "full", Minimized = true })
+
+local themes = {
+    Default         = Color3.fromRGB(90, 110, 160),
+    ["Dark Blue"]   = Color3.fromRGB(50, 90, 200),
+    ["Dark Green"]  = Color3.fromRGB(60, 150, 90),
+    ["Purple Rose"] = Color3.fromRGB(160, 80, 160),
+    Skeet           = Color3.fromRGB(200, 60, 60),
+}
+SecAjustes:AddDropdown({
+    Name     = "Select Theme",
+    Default  = "Default",
+    Values   = { "Default", "Dark Blue", "Dark Green", "Purple Rose", "Skeet" },
+    Callback = function(v)
+        Compkiller:ChangeHighlightColor(themes[v] or themes.Default)
+    end
+})
+
+SecAjustes:AddToggle({
+    Name     = "Always Show Frame",
+    Default  = false,
+    Risky    = false,
+    Callback = function(v)
+        pcall(function() Window.AlwaysShowTab = v end)
+    end
+})
+
+Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
+
+_BLADEX_LOADING = false
+notify("Push Rock for Brainrots cargado!", 5)
