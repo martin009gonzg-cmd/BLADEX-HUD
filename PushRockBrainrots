@@ -1,4 +1,3 @@
-
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
@@ -19,20 +18,20 @@ local Players = game:GetService("Players")
 
 local Events          = RS:WaitForChild("Events", 10)
 local upgradeChar     = Events and Events:WaitForChild("upgradeCharacterEvent", 10)
-local upgradesOpened  = Events and Events:WaitForChild("upgradesMenuOpened", 10)
 local buySolo         = Events and Events:WaitForChild("buySoloEvent", 10)
 local giftToolEvent   = Events and Events:WaitForChild("GiftToolEvent", 10)
 local promptGiftEvent = Events and Events:WaitForChild("PromptToolGiftEvent", 10)
+local doRebirthEvent  = Events and Events:WaitForChild("doRebirthEvent", 10)
 
 _G.AutoCollectCash     = false
 _G.AutoUpgradeBrainrot = false
 _G.AutoStrength        = false
+_G.AutoRebirth         = false
 _G.AutoAcceptTrade     = false
 _G.AutoSendTrade       = false
 _G.AutoDupe            = false
 
 local selectedPlayer = nil
-local selectedItem   = "Trollface"
 local dupeAmount     = 1
 local activeThreads  = {}
 
@@ -43,6 +42,21 @@ end
 
 local function stopLoop(name)
     if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+end
+
+local function getBackpackItems()
+    local lp = Players.LocalPlayer
+    local backpack = lp:FindFirstChild("Backpack")
+    local items = {}
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") then
+                table.insert(items, tool.Name)
+            end
+        end
+    end
+    if #items == 0 then table.insert(items, "(sin items)") end
+    return items
 end
 
 local function getServerPlayers()
@@ -168,22 +182,19 @@ local function loopAutoStrength()
     while _G.AutoStrength do
         if buySolo then
             pcall(function()
-                buySolo:FireServer(1)
+                buySolo:FireServer(10)
             end)
         end
         task.wait(0.1)
     end
 end
 
-local function loopAutoAcceptTrade()
-    while _G.AutoAcceptTrade do
-        if giftToolEvent and selectedPlayer then
-            local target = getPlayerByName(selectedPlayer)
-            if target then
-                pcall(function()
-                    giftToolEvent:FireServer("Accept", target, selectedItem, tostring(os.time()) .. "_" .. selectedItem .. "_" .. tostring(math.random(1000000, 9999999)))
-                end)
-            end
+local function loopAutoRebirth()
+    while _G.AutoRebirth do
+        if doRebirthEvent then
+            pcall(function()
+                doRebirthEvent:FireServer()
+            end)
         end
         task.wait(0.5)
     end
@@ -194,13 +205,31 @@ local function loopAutoSendTrade()
         if promptGiftEvent and selectedPlayer then
             local target = getPlayerByName(selectedPlayer)
             if target then
-                pcall(function()
-                    promptGiftEvent:FireServer(target, selectedItem)
-                end)
+                local items = getBackpackItems()
+                for _, itemName in ipairs(items) do
+                    if not _G.AutoSendTrade then break end
+                    if itemName ~= "(sin items)" then
+                        pcall(function()
+                            promptGiftEvent:FireServer(target, itemName)
+                        end)
+                        task.wait(0.3)
+                    end
+                end
             end
         end
         task.wait(0.5)
     end
+end
+
+if giftToolEvent then
+    giftToolEvent.OnClientEvent:Connect(function(action, sender, itemName, tradeId)
+        if not _G.AutoAcceptTrade then return end
+        task.wait(0.1)
+        pcall(function()
+            giftToolEvent:FireServer("Accept", sender, itemName, tradeId)
+        end)
+        notify("Trade aceptado: " .. tostring(itemName) .. " de " .. tostring(sender and sender.Name or "?"), 3)
+    end)
 end
 
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
@@ -259,6 +288,23 @@ local strengthToggle = SecLeft:AddToggle({
     end
 })
 strengthToggle:SetValue(false)
+
+SecLeft:AddToggle({
+    Name     = "Auto Rebirth",
+    Default  = false,
+    Flag     = "BLADEX_autorebirth",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoRebirth = v
+        if v then
+            startLoop("AutoRebirth", loopAutoRebirth)
+            notify("Auto Rebirth activado", 3)
+        else
+            stopLoop("AutoRebirth")
+            notify("Auto Rebirth desactivado", 3)
+        end
+    end
+})
 
 local upgradeToggle = SecRight:AddToggle({
     Name     = "Auto Upgrade Brainrot",
@@ -399,14 +445,8 @@ SecTrade:AddToggle({
     Callback = function(v)
         _G.AutoAcceptTrade = v
         if v then
-            if not selectedPlayer then
-                notify("Selecciona un jugador primero", 3)
-                return
-            end
-            startLoop("AutoAcceptTrade", loopAutoAcceptTrade)
-            notify("Auto Accept Trade activado → " .. (selectedPlayer or "?"), 3)
+            notify("Auto Accept Trade activado", 3)
         else
-            stopLoop("AutoAcceptTrade")
             notify("Auto Accept Trade desactivado", 3)
         end
     end
