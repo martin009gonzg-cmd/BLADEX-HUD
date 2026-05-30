@@ -1,13 +1,6 @@
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
-local Notifier = Compkiller.newNotify()
-local _BLADEX_LOADING = true
-local function notify(content, duration)
-    if _BLADEX_LOADING then return end
-    Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
-end
-
 local ConfigManager = Compkiller:ConfigManager({
     Directory = "BLADEX-HUB",
     Config    = "BLADEX-Streets",
@@ -15,20 +8,23 @@ local ConfigManager = Compkiller:ConfigManager({
 
 local Players     = game:GetService("Players")
 local RunService  = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Camera      = workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
-
 
 _G.NoRecoil     = false
 _G.NoSpread     = false
 _G.RapidFire    = false
 _G.InfiniteAmmo = false
+_G.HighDamage   = false
 
-
-_G.SilentAim = false
-local SA_FOV = 90
-local saHook = nil
-
+_G.SilentAim    = false
+local SA_FOV    = 90
+local SA_SMOOTH = false
+local SA_SMOOTH_SPEED = 8
+local SA_MAX_DIST     = 500
+local SA_PREDICTION   = false
+local SA_FOV_SHOW     = false
 
 _G.ESP          = false
 _G.VidaESP      = false
@@ -36,13 +32,13 @@ _G.DistanciaESP = false
 _G.NombreESP    = false
 _G.BoxESP       = false
 _G.TracerESP    = false
-_G.EquipoColor  = true
 _G.RainbowESP   = false
 
 local originalValues  = {}
 local espConn         = nil
 local espObjects      = {}
 local weaponLoopConn  = nil
+local saLoopConn      = nil
 
 local ESPColorManual = Color3.fromRGB(255, 80, 80)
 
@@ -59,7 +55,6 @@ local ESP_COLORES = {
 
 local RECOIL_PROPS = { "RecoilMin", "RecoilMax", "TotalRecoilMax", "UpKick", "SideKick" }
 local SPREAD_PROPS = { "MaxSpread", "MinSpread", "CrossHairPulse" }
-local FIRE_PROPS   = { "ShotCooldown" }
 
 local Logger = {}
 local function timestamp() return string.format("[%.2fs]", os.clock()) end
@@ -68,7 +63,6 @@ function Logger.warn(m, msg) warn(timestamp()  .. " [BLADEX][!] " .. m .. " → 
 function Logger.err(m, msg)  warn(timestamp()  .. " [BLADEX][✗] " .. m .. " → " .. msg) end
 function Logger.info(m, msg) print(timestamp() .. " [BLADEX][i] " .. m .. " → " .. msg) end
 
-
 local function getRainbowColor(offset)
     return Color3.fromHSV(((tick() * 0.4) + (offset or 0)) % 1, 1, 1)
 end
@@ -76,11 +70,6 @@ end
 local function getESPColor(plr, offset)
     if _G.RainbowESP then
         return getRainbowColor(offset or 0)
-    end
-    if _G.EquipoColor then
-        if plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then
-            return Color3.fromRGB(0, 220, 80)
-        end
     end
     return ESPColorManual
 end
@@ -113,7 +102,6 @@ local function getCharBounds(char)
         dist = bottomScreen.Z,
     }
 end
-
 
 local function newDrawing(dtype, props)
     local d = Drawing.new(dtype)
@@ -262,7 +250,6 @@ local function updateESPForPlayer(plr)
     end
 end
 
-
 local function startESPLoop()
     if espConn then espConn:Disconnect() end
     espConn = RunService.RenderStepped:Connect(function()
@@ -289,111 +276,201 @@ Players.PlayerRemoving:Connect(function(plr)
     removeESPForPlayer(plr)
 end)
 
+local SA_MIN_DIST = 10
 
-local WeaponHitRemote = nil
-task.spawn(function()
-    local ws = game:GetService("ReplicatedStorage"):WaitForChild("WeaponsSystem", 10)
-    local net = ws and ws:WaitForChild("Network", 10)
-    WeaponHitRemote = net and net:WaitForChild("WeaponHit", 10)
-    if WeaponHitRemote then
-        Logger.ok("SILENT AIM", "WeaponHit remote encontrado")
-    else
-        Logger.err("SILENT AIM", "WeaponHit remote NO encontrado")
-    end
-end)
-
-local function getSilentAimTarget(fovRadius)
-    local vp       = Camera.ViewportSize
-    local center   = Vector2.new(vp.X / 2, vp.Y / 2)
-    local best     = nil
-    local bestDist = fovRadius
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer and plr.Character then
-            local char = plr.Character
-            local hum  = char:FindFirstChildOfClass("Humanoid")
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if hum and hum.Health > 0 and root then
-                local screenPos, onScreen = Camera:WorldToViewportPoint(root.Position)
-                if onScreen and screenPos.Z > 0 then
-                    local screenV2 = Vector2.new(screenPos.X, screenPos.Y)
-                    local dist = (screenV2 - center).Magnitude
-                    if dist < bestDist then
-                        bestDist = dist
-                        best = { plr = plr, root = root }
+local function isInSafeZone(char)
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return true end
+    if root.Position.Y < -10 then return true end
+    if char:GetAttribute("InSafeZone") then return true end
+    local szFolder = workspace:FindFirstChild("SafeZones")
+    if szFolder then
+        for _, zone in ipairs(szFolder:GetChildren()) do
+            if zone:IsA("BasePart") or zone:IsA("Model") then
+                local part = zone:IsA("BasePart") and zone or zone:FindFirstChildWhichIsA("BasePart")
+                if part then
+                    local rel = part.CFrame:PointToObjectSpace(root.Position)
+                    local half = part.Size / 2
+                    if math.abs(rel.X) <= half.X and math.abs(rel.Y) <= half.Y and math.abs(rel.Z) <= half.Z then
+                        return true
                     end
                 end
             end
         end
     end
+    return false
+end
+
+local fovCircleOuter = Drawing.new("Circle")
+fovCircleOuter.Visible      = false
+fovCircleOuter.Thickness    = 1.5
+fovCircleOuter.Transparency = 0.85
+fovCircleOuter.NumSides     = 64
+fovCircleOuter.Filled       = false
+
+local fovCircleInner = Drawing.new("Circle")
+fovCircleInner.Visible      = false
+fovCircleInner.Thickness    = 1
+fovCircleInner.Transparency = 0.6
+fovCircleInner.NumSides     = 64
+fovCircleInner.Filled       = false
+
+local fovHideTask = nil
+
+local function getFOVColor()
+    if _G.RainbowESP then
+        return Color3.fromHSV((tick() * 0.4) % 1, 1, 1)
+    end
+    return ESPColorManual
+end
+
+local function showFOVCircle()
+    SA_FOV_SHOW = true
+    if fovHideTask then task.cancel(fovHideTask) end
+    fovHideTask = task.delay(1.5, function()
+        SA_FOV_SHOW = false
+        fovCircleOuter.Visible = false
+        fovCircleInner.Visible = false
+        fovHideTask = nil
+    end)
+end
+
+local function updateFOVCircle()
+    if not SA_FOV_SHOW then return end
+    local vp  = Camera.ViewportSize
+    local cx  = vp.X / 2
+    local cy  = vp.Y / 2
+    local col = getFOVColor()
+
+    fovCircleOuter.Position    = Vector2.new(cx, cy)
+    fovCircleOuter.Radius      = SA_FOV
+    fovCircleOuter.Color       = col
+    fovCircleOuter.Visible     = true
+
+    fovCircleInner.Position    = Vector2.new(cx, cy)
+    fovCircleInner.Radius      = math.max(SA_FOV * 0.35, 8)
+    fovCircleInner.Color       = col
+    fovCircleInner.Visible     = true
+end
+
+local function getCharHeight(char)
+    local root = char:FindFirstChild("HumanoidRootPart")
+    local head = char:FindFirstChild("Head")
+    if not root or not head then return 3.0 end
+    local rootBottom = root.Position.Y - (root.Size.Y / 2)
+    local headTop    = head.Position.Y  + (head.Size.Y / 2)
+    return math.max(headTop - rootBottom, 1.5)
+end
+
+local function getHeadOffset(char, worldDist)
+    local charHeight = getCharHeight(char)
+    local refHeight  = 5.0
+    local heightScale = refHeight / math.max(charHeight, 1.5)
+    local distFactor = (worldDist / 500) ^ 1.4
+    local baseOffset = distFactor * 0.55
+    return baseOffset * heightScale
+end
+
+local function getSATarget()
+    local vp     = Camera.ViewportSize
+    local center = Vector2.new(vp.X / 2, vp.Y / 2)
+    local best   = nil
+    local bestD  = SA_FOV
+
+    local myChar = LocalPlayer.Character
+    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr == LocalPlayer then continue end
+        if plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then continue end
+
+        local char = plr.Character
+        if not char then continue end
+        local hum  = char:FindFirstChildOfClass("Humanoid")
+        local root = char:FindFirstChild("HumanoidRootPart")
+        if not hum or hum.Health <= 0 or not root then continue end
+
+        if isInSafeZone(char) then continue end
+
+        local worldDist = 0
+        if myRoot then
+            worldDist = (myRoot.Position - root.Position).Magnitude
+            if worldDist > SA_MAX_DIST then continue end
+            if worldDist < SA_MIN_DIST then continue end
+        end
+
+        local headPart   = char:FindFirstChild("Head")
+        local targetPart = headPart
+                        or char:FindFirstChild("UpperTorso")
+                        or char:FindFirstChild("Torso")
+                        or root
+
+        local targetPos = targetPart.Position
+
+        if headPart and worldDist > SA_MIN_DIST then
+            local yOffset = getHeadOffset(char, worldDist)
+            targetPos = Vector3.new(targetPos.X, targetPos.Y + yOffset, targetPos.Z)
+        end
+
+        if SA_PREDICTION then
+            local vel   = root.AssemblyLinearVelocity
+            local ping  = 0.08
+            local stats = game:GetService("Stats")
+            if stats then
+                local ok, ms = pcall(function()
+                    return stats.Network.ServerStatsItem["Data Ping"]:GetValue()
+                end)
+                if ok and ms and ms > 0 then ping = ms / 1000 end
+            end
+            local flatVel = Vector3.new(vel.X, 0, vel.Z)
+            targetPos = targetPos + flatVel * ping
+        end
+
+        if targetPos.Y < -5 then continue end
+
+        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
+        if not onScreen or screenPos.Z <= 0 then continue end
+
+        local screenV2 = Vector2.new(screenPos.X, screenPos.Y)
+        local d = (screenV2 - center).Magnitude
+        if d < bestD then
+            bestD = d
+            best = { plr = plr, part = targetPart, pos = targetPos, dist = worldDist }
+        end
+    end
     return best
 end
 
-local function enableSilentAim()
-    if not WeaponHitRemote then
-        Logger.err("SILENT AIM", "Remote no disponible aún — reintentando en 1s")
-        task.delay(1, enableSilentAim)
-        return
-    end
-    if saHook then return end
+local function startSALoop()
+    if saLoopConn then saLoopConn:Disconnect() end
+    saLoopConn = RunService.RenderStepped:Connect(function()
+        if not _G.SilentAim then return end
 
-    local oldFire = hookfunction(
-        WeaponHitRemote.FireServer,
-        newcclosure(function(self, tool, hitData)
-            if _G.SilentAim and hitData then
-                local target = getSilentAimTarget(SA_FOV)
-                if target then
-                    local root  = target.root
-                    local head  = target.plr.Character:FindFirstChild("Head")
-                    local aimPart = head or root
+        updateFOVCircle()
 
-                    hitData["part"] = aimPart
-                    hitData["h"]    = aimPart
-                    hitData["p"]    = aimPart.Position
-                    hitData["n"]    = Vector3.new(0, 0, 1)
+        local target = getSATarget()
+        if not target then return end
 
-                    local myChar = LocalPlayer.Character
-                    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-                    if myRoot then
-                        hitData["d"] = (myRoot.Position - aimPart.Position).Magnitude
-                    end
-                end
-            end
-            return oldFire(self, tool, hitData)
-        end)
-    )
-    saHook = oldFire
-    Logger.ok("SILENT AIM", "Hook activo — FOV " .. SA_FOV .. "px")
+        local camCF  = Camera.CFrame
+        local lookAt = CFrame.lookAt(camCF.Position, target.pos)
+
+        if SA_SMOOTH then
+            local dt    = game:GetService("RunService").RenderStepped:Wait()
+            local alpha = math.clamp(1 - math.exp(-SA_SMOOTH_SPEED * dt * 10), 0, 1)
+            Camera.CFrame = camCF:Lerp(lookAt, alpha)
+        else
+            Camera.CFrame = lookAt
+        end
+    end)
+    Logger.ok("SILENT AIM", "Loop activo")
 end
 
-local function disableSilentAim()
-    if saHook then
-        hookfunction(WeaponHitRemote.FireServer, saHook)
-        saHook = nil
-        Logger.ok("SILENT AIM", "Hook removido")
-    end
+local function stopSALoop()
+    if saLoopConn then saLoopConn:Disconnect(); saLoopConn = nil end
+    fovCircleOuter.Visible = false
+    fovCircleInner.Visible = false
+    Logger.ok("SILENT AIM", "Loop detenido")
 end
-
-local fovCircle = Drawing.new("Circle")
-fovCircle.Visible     = false
-fovCircle.Color       = Color3.fromRGB(255, 255, 255)
-fovCircle.Thickness   = 1
-fovCircle.Transparency = 0.6
-fovCircle.NumSides    = 64
-fovCircle.Radius      = SA_FOV
-fovCircle.Filled      = false
-
-RunService.RenderStepped:Connect(function()
-    if _G.SilentAim then
-        local vp = Camera.ViewportSize
-        fovCircle.Position = Vector2.new(vp.X / 2, vp.Y / 2)
-        fovCircle.Radius   = SA_FOV
-        fovCircle.Visible  = true
-    else
-        fovCircle.Visible = false
-    end
-end)
-
 
 local function getSources()
     local sources = {}
@@ -407,7 +484,6 @@ end
 local function getItemConfig(item)
     local cfg = item:FindFirstChild("Configuration")
     if cfg then return cfg end
-    -- Buscar en hijos directos (armas tipo Model que contienen otro tool)
     for _, child in ipairs(item:GetChildren()) do
         local nested = child:FindFirstChild("Configuration")
         if nested then return nested end
@@ -426,11 +502,10 @@ local function getWeapons()
     return weapons
 end
 
-
 local function startWeaponLoop()
     if weaponLoopConn then weaponLoopConn:Disconnect() end
     weaponLoopConn = RunService.Heartbeat:Connect(function()
-        local anyActive = _G.NoRecoil or _G.NoSpread or _G.RapidFire or _G.InfiniteAmmo
+        local anyActive = _G.NoRecoil or _G.NoSpread or _G.RapidFire or _G.InfiniteAmmo or _G.HighDamage
         if not anyActive then return end
 
         for _, w in ipairs(getWeapons()) do
@@ -466,6 +541,11 @@ local function startWeaponLoop()
                     if ca and ca.Value < cap.Value then ca.Value = cap.Value end
                 end
             end
+
+            if _G.HighDamage then
+                local dmg = cfg:FindFirstChild("HitDamage")
+                if dmg and dmg.Value ~= 999 then dmg.Value = 999 end
+            end
         end
     end)
     Logger.ok("WEAPON LOOP", "Loop unificado iniciado")
@@ -473,7 +553,7 @@ end
 
 local function onCharacterAdded(char)
     originalValues = {}
-    Logger.info("PERSONAJE", "Respawn — loop de armas sigue activo")
+    Logger.info("PERSONAJE", "Respawn — loops siguen activos")
 end
 
 if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
@@ -483,6 +563,13 @@ end)
 
 startWeaponLoop()
 startESPLoop()
+
+local Notifier = Compkiller.newNotify()
+local _BLADEX_LOADING = true
+local function notify(content, duration)
+    if _BLADEX_LOADING then return end
+    Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
+end
 
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
 
@@ -495,75 +582,47 @@ local Window = Compkiller.new({
 })
 Window.Minimized = true
 
-local TabVisual = Window:DrawTab({ Name = "Visual", Icon = "lucide-eye" })
-local SecESP    = TabVisual:DrawSection({ Name = "ESP", Side = "left", Minimized = true })
-local SecOpts   = TabVisual:DrawSection({ Name = "Color ESP", Side = "right", Minimized = true })
+local TabStreets = Window:DrawContainerTab({ Name = "Streets", Icon = "lucide-sword" })
+
+local SubVisual   = TabStreets:DrawTab({ Name = "Visual" })
+local SubSA       = TabStreets:DrawTab({ Name = "Silent Aim" })
+local SubArmas    = TabStreets:DrawTab({ Name = "Armas" })
+
+local SecESP  = SubVisual:DrawSection({ Name = "ESP",       Side = "left",  Minimized = true })
+local SecOpts = SubVisual:DrawSection({ Name = "Color ESP", Side = "right", Minimized = true })
 
 SecESP:AddToggle({
     Name = "ESP Jugadores", Flag = "BLADEX_esp", Risky = false,
     Callback = function(val)
         _G.ESP = val
-        if val then startESPLoop(); notify("ESP activado", 3)
-        else stopESPLoop(); notify("ESP desactivado", 3) end
+        if val then startESPLoop() else stopESPLoop() end
     end,
 })
-
 SecESP:AddToggle({
     Name = "Box ESP", Flag = "BLADEX_boxesp", Risky = false,
-    Callback = function(val)
-        _G.BoxESP = val
-        notify(val and "Box ESP activado" or "Box ESP desactivado", 3)
-    end,
+    Callback = function(val) _G.BoxESP = val end,
 })
-
 SecESP:AddToggle({
     Name = "Nombre Jugador", Flag = "BLADEX_nombreesp", Risky = false,
-    Callback = function(val)
-        _G.NombreESP = val
-        notify(val and "Nombre ESP activado" or "Nombre ESP desactivado", 3)
-    end,
+    Callback = function(val) _G.NombreESP = val end,
 })
-
 SecESP:AddToggle({
     Name = "Vida Jugador", Flag = "BLADEX_vidaesp", Risky = false,
-    Callback = function(val)
-        _G.VidaESP = val
-        notify(val and "Vida ESP activado" or "Vida ESP desactivado", 3)
-    end,
+    Callback = function(val) _G.VidaESP = val end,
 })
-
 SecESP:AddToggle({
     Name = "Distancia", Flag = "BLADEX_distanciaesp", Risky = false,
-    Callback = function(val)
-        _G.DistanciaESP = val
-        notify(val and "Distancia ESP activado" or "Distancia ESP desactivado", 3)
-    end,
+    Callback = function(val) _G.DistanciaESP = val end,
 })
-
 SecESP:AddToggle({
     Name = "Tracers", Flag = "BLADEX_traceresp", Risky = false,
-    Callback = function(val)
-        _G.TracerESP = val
-        notify(val and "Tracers activados" or "Tracers desactivados", 3)
-    end,
-})
-
-SecESP:AddToggle({
-    Name = "Color por Equipo", Flag = "BLADEX_equipocolor", Risky = false,
-    Callback = function(val)
-        _G.EquipoColor = val
-        notify(val and "Color equipo activado" or "Color equipo desactivado", 3)
-    end,
+    Callback = function(val) _G.TracerESP = val end,
 })
 
 SecOpts:AddToggle({
     Name = "Rainbow ESP", Flag = "BLADEX_rainbowesp", Risky = false,
-    Callback = function(val)
-        _G.RainbowESP = val
-        notify(val and "Rainbow ESP activado" or "Rainbow ESP desactivado", 3)
-    end,
+    Callback = function(val) _G.RainbowESP = val end,
 })
-
 SecOpts:AddDropdown({
     Name     = "Color ESP",
     Default  = "Rojo",
@@ -573,69 +632,69 @@ SecOpts:AddDropdown({
         if ESP_COLORES[val] then
             ESPColorManual = ESP_COLORES[val]
             _G.RainbowESP  = false
-            notify("Color ESP: " .. val, 3)
         end
     end,
 })
 
-local TabSA   = Window:DrawTab({ Name = "Silent Aim", Icon = "lucide-crosshair" })
-local SecSA   = TabSA:DrawSection({ Name = "Configuracion", Side = "left", Minimized = true })
-local SecSAOp = TabSA:DrawSection({ Name = "FOV", Side = "right", Minimized = true })
+local SecSA    = SubSA:DrawSection({ Name = "Configuracion", Side = "left",  Minimized = true })
+local SecSAOpt = SubSA:DrawSection({ Name = "Opciones",      Side = "right", Minimized = true })
 
 SecSA:AddToggle({
     Name = "Silent Aim", Flag = "BLADEX_silentaim", Risky = false,
     Callback = function(val)
         _G.SilentAim = val
-        if val then enableSilentAim(); notify("Silent Aim activado", 3)
-        else disableSilentAim(); notify("Silent Aim desactivado", 3) end
+        if val then startSALoop() else stopSALoop() end
     end,
 })
-
-SecSAOp:AddSlider({
-    Name     = "FOV Radio",
-    Min      = 20,
-    Max      = 300,
-    Default  = 90,
-    Round    = 0,
-    Callback = function(val)
-        SA_FOV = val
-    end,
+SecSA:AddToggle({
+    Name = "Smooth Aim", Flag = "BLADEX_smoothaim", Risky = false,
+    Callback = function(val) SA_SMOOTH = val end,
+})
+SecSA:AddToggle({
+    Name = "Prediccion", Flag = "BLADEX_prediccion", Risky = false,
+    Callback = function(val) SA_PREDICTION = val end,
 })
 
-local TabArmas = Window:DrawTab({ Name = "Armas", Icon = "lucide-sword" })
-local SecMods  = TabArmas:DrawSection({ Name = "Modificadores", Side = "left", Minimized = true })
-local SecAmmo  = TabArmas:DrawSection({ Name = "Municion", Side = "right", Minimized = true })
+SecSAOpt:AddSlider({
+    Name = "FOV Radio", Min = 20, Max = 300, Default = 90, Round = 0,
+    Callback = function(val) SA_FOV = val; showFOVCircle() end,
+})
+SecSAOpt:AddSlider({
+    Name = "Velocidad Smooth", Min = 1, Max = 20, Default = 8, Round = 0,
+    Callback = function(val) SA_SMOOTH_SPEED = val end,
+})
+SecSAOpt:AddSlider({
+    Name = "Distancia Max", Min = 50, Max = 1000, Default = 500, Round = 0,
+    Callback = function(val) SA_MAX_DIST = val end,
+})
+SecSAOpt:AddSlider({
+    Name = "Distancia Min", Min = 5, Max = 100, Default = 10, Round = 0,
+    Callback = function(val) SA_MIN_DIST = val end,
+})
+
+local SecMods = SubArmas:DrawSection({ Name = "Modificadores", Side = "left",  Minimized = true })
+local SecAmmo = SubArmas:DrawSection({ Name = "Municion",      Side = "right", Minimized = true })
 
 SecMods:AddToggle({
     Name = "No Recoil", Flag = "BLADEX_norecoil", Risky = false,
-    Callback = function(val)
-        _G.NoRecoil = val
-        notify(val and "No Recoil activado" or "No Recoil desactivado", 3)
-    end,
+    Callback = function(val) _G.NoRecoil = val end,
 })
-
 SecMods:AddToggle({
     Name = "No Spread", Flag = "BLADEX_nospread", Risky = false,
-    Callback = function(val)
-        _G.NoSpread = val
-        notify(val and "No Spread activado" or "No Spread desactivado", 3)
-    end,
+    Callback = function(val) _G.NoSpread = val end,
 })
-
 SecMods:AddToggle({
     Name = "Rapid Fire", Flag = "BLADEX_rapidfire", Risky = false,
-    Callback = function(val)
-        _G.RapidFire = val
-        notify(val and "Rapid Fire activado" or "Rapid Fire desactivado", 3)
-    end,
+    Callback = function(val) _G.RapidFire = val end,
+})
+SecMods:AddToggle({
+    Name = "High Damage", Flag = "BLADEX_highdamage", Risky = false,
+    Callback = function(val) _G.HighDamage = val end,
 })
 
 SecAmmo:AddToggle({
     Name = "Infinite Ammo", Flag = "BLADEX_infiniteammo", Risky = false,
-    Callback = function(val)
-        _G.InfiniteAmmo = val
-        notify(val and "Infinite Ammo activado" or "Infinite Ammo desactivado", 3)
-    end,
+    Callback = function(val) _G.InfiniteAmmo = val end,
 })
 
 Window:DrawCategory({ Name = "Extra" })
