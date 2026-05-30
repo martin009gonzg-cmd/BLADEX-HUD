@@ -371,6 +371,23 @@ local function getHeadOffset(char, worldDist)
     return baseOffset * heightScale
 end
 
+local SA_WALLCHECK = true
+
+local function isVisible(fromPos, targetPos, targetChar)
+    if not SA_WALLCHECK then return true end
+    local myChar = LocalPlayer.Character
+    local direction = (targetPos - fromPos)
+    local distance  = direction.Magnitude
+    if distance < 0.1 then return true end
+
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = { myChar, targetChar }
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+    local result = workspace:Raycast(fromPos, direction.Unit * distance, rayParams)
+    return result == nil
+end
+
 local function getSATarget()
     local vp     = Camera.ViewportSize
     local center = Vector2.new(vp.X / 2, vp.Y / 2)
@@ -427,6 +444,8 @@ local function getSATarget()
         end
 
         if targetPos.Y < -5 then continue end
+
+        if not isVisible(Camera.CFrame.Position, targetPos, char) then continue end
 
         local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
         if not onScreen or screenPos.Z <= 0 then continue end
@@ -645,6 +664,11 @@ SecSA:AddToggle({
         _G.SilentAim = val
         if val then startSALoop() else stopSALoop() end
     end,
+})
+SecSA:AddToggle({
+    Name = "Wall Check", Flag = "BLADEX_wallcheck", Risky = false,
+    Default = true,
+    Callback = function(val) SA_WALLCHECK = val end,
 })
 SecSA:AddToggle({
     Name = "Smooth Aim", Flag = "BLADEX_smoothaim", Risky = false,
