@@ -1,593 +1,203 @@
+
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
-
-local ConfigManager = Compkiller:ConfigManager({
-    Directory = "BLADEX-HUB",
-    Config    = "BLADEX-Streets",
-})
-
-local Players     = game:GetService("Players")
-local RunService  = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local Camera      = workspace.CurrentCamera
-local LocalPlayer = Players.LocalPlayer
-
-_G.NoRecoil     = false
-_G.NoSpread     = false
-_G.RapidFire    = false
-_G.InfiniteAmmo = false
-_G.HighDamage   = false
-
-_G.SilentAim    = false
-local SA_FOV    = 90
-local SA_SMOOTH = false
-local SA_SMOOTH_SPEED = 8
-local SA_MAX_DIST     = 500
-local SA_PREDICTION   = false
-local SA_FOV_SHOW     = false
-
-_G.ESP          = false
-_G.VidaESP      = false
-_G.DistanciaESP = false
-_G.NombreESP    = false
-_G.BoxESP       = false
-_G.TracerESP    = false
-_G.RainbowESP   = false
-
-local originalValues  = {}
-local espConn         = nil
-local espObjects      = {}
-local weaponLoopConn  = nil
-local saLoopConn      = nil
-
-local ESPColorManual = Color3.fromRGB(255, 80, 80)
-
-local ESP_COLORES = {
-    ["Rojo"]     = Color3.fromRGB(255, 80,  80),
-    ["Verde"]    = Color3.fromRGB(0,   220, 80),
-    ["Azul"]     = Color3.fromRGB(80,  140, 255),
-    ["Blanco"]   = Color3.fromRGB(255, 255, 255),
-    ["Amarillo"] = Color3.fromRGB(255, 230, 0),
-    ["Cyan"]     = Color3.fromRGB(0,   230, 255),
-    ["Naranja"]  = Color3.fromRGB(255, 140, 0),
-    ["Rosa"]     = Color3.fromRGB(255, 80,  200),
-}
-
-local RECOIL_PROPS = { "RecoilMin", "RecoilMax", "TotalRecoilMax", "UpKick", "SideKick" }
-local SPREAD_PROPS = { "MaxSpread", "MinSpread", "CrossHairPulse" }
-
-local Logger = {}
-local function timestamp() return string.format("[%.2fs]", os.clock()) end
-function Logger.ok(m, msg)   print(timestamp() .. " [BLADEX][✓] " .. m .. " → " .. msg) end
-function Logger.warn(m, msg) warn(timestamp()  .. " [BLADEX][!] " .. m .. " → " .. msg) end
-function Logger.err(m, msg)  warn(timestamp()  .. " [BLADEX][✗] " .. m .. " → " .. msg) end
-function Logger.info(m, msg) print(timestamp() .. " [BLADEX][i] " .. m .. " → " .. msg) end
-
-local function getRainbowColor(offset)
-    return Color3.fromHSV(((tick() * 0.4) + (offset or 0)) % 1, 1, 1)
-end
-
-local function getESPColor(plr, offset)
-    if _G.RainbowESP then
-        return getRainbowColor(offset or 0)
-    end
-    return ESPColorManual
-end
-
-local function getCharBounds(char)
-    local root = char:FindFirstChild("HumanoidRootPart")
-    if not root then return nil end
-
-    local top    = root.Position + Vector3.new(0, 3.2, 0)
-    local bottom = root.Position - Vector3.new(0, 3.2, 0)
-
-    local topScreen,    onTop    = Camera:WorldToViewportPoint(top)
-    local bottomScreen, onBottom = Camera:WorldToViewportPoint(bottom)
-
-    if topScreen.Z < 0 and bottomScreen.Z < 0 then return nil end
-    if not onTop and not onBottom then return nil end
-
-    local height = math.abs(topScreen.Y - bottomScreen.Y)
-    local width  = height * 0.55
-    local cx     = (topScreen.X + bottomScreen.X) / 2
-    local cy     = math.min(topScreen.Y, bottomScreen.Y)
-
-    return {
-        x  = cx - width / 2,
-        y  = cy,
-        w  = width,
-        h  = height,
-        cx = cx,
-        cy = cy,
-        dist = bottomScreen.Z,
-    }
-end
-
-local function newDrawing(dtype, props)
-    local d = Drawing.new(dtype)
-    for k, v in pairs(props) do d[k] = v end
-    return d
-end
-
-local function createESPForPlayer(plr)
-    if espObjects[plr] then return end
-    local obj = {}
-
-    obj.boxOutline = newDrawing("Square", {
-        Visible = false, Filled = false,
-        Color = Color3.new(0,0,0), Thickness = 3, ZIndex = 1,
-    })
-    obj.box = newDrawing("Square", {
-        Visible = false, Filled = false,
-        Color = ESPColorManual, Thickness = 1.5, ZIndex = 2,
-    })
-    obj.name = newDrawing("Text", {
-        Visible = false, Color = Color3.fromRGB(255,255,255),
-        Size = 13, Center = true, Outline = true,
-        OutlineColor = Color3.new(0,0,0), Font = Drawing.Fonts.GothamBold, ZIndex = 3,
-    })
-    obj.hpBarBg = newDrawing("Square", {
-        Visible = false, Filled = true,
-        Color = Color3.fromRGB(20,20,20), Thickness = 1, ZIndex = 2,
-    })
-    obj.hpBar = newDrawing("Square", {
-        Visible = false, Filled = true,
-        Color = Color3.fromRGB(0,220,80), Thickness = 1, ZIndex = 3,
-    })
-    obj.dist = newDrawing("Text", {
-        Visible = false, Color = Color3.fromRGB(200,200,200),
-        Size = 11, Center = true, Outline = true,
-        OutlineColor = Color3.new(0,0,0), Font = Drawing.Fonts.Gotham, ZIndex = 3,
-    })
-    obj.tracer = newDrawing("Line", {
-        Visible = false, Color = ESPColorManual, Thickness = 1, ZIndex = 1,
-    })
-
-    espObjects[plr] = obj
-end
-
-local function removeESPForPlayer(plr)
-    if not espObjects[plr] then return end
-    for _, d in pairs(espObjects[plr]) do pcall(function() d:Remove() end) end
-    espObjects[plr] = nil
-end
-
-local function updateESPForPlayer(plr)
-    local obj = espObjects[plr]
-    if not obj then return end
-
-    local char = plr.Character
-    if not char then
-        for _, d in pairs(obj) do d.Visible = false end
-        return
-    end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then
-        for _, d in pairs(obj) do d.Visible = false end
-        return
-    end
-
-    local bounds = getCharBounds(char)
-    if not bounds then
-        for _, d in pairs(obj) do d.Visible = false end
-        return
-    end
-
-    local color    = getESPColor(plr, 0)
-    local colorAlt = getESPColor(plr, 0.33)
-
-    if _G.BoxESP then
-        obj.box.Position  = Vector2.new(bounds.x, bounds.y)
-        obj.box.Size      = Vector2.new(bounds.w, bounds.h)
-        obj.box.Color     = color
-        obj.box.Visible   = true
-
-        obj.boxOutline.Position = Vector2.new(bounds.x - 1, bounds.y - 1)
-        obj.boxOutline.Size     = Vector2.new(bounds.w + 2, bounds.h + 2)
-        obj.boxOutline.Visible  = true
-    else
-        obj.box.Visible        = false
-        obj.boxOutline.Visible = false
-    end
-
-    if _G.NombreESP then
-        obj.name.Text     = plr.Name
-        obj.name.Position = Vector2.new(bounds.cx, bounds.y - 15)
-        obj.name.Color    = color
-        obj.name.Visible  = true
-    else
-        obj.name.Visible = false
-    end
-
-    if _G.VidaESP then
-        local hp    = math.clamp(hum.Health, 0, hum.MaxHealth)
-        local maxHp = math.max(hum.MaxHealth, 1)
-        local pct   = hp / maxHp
-        local barW  = 4
-        local barX  = bounds.x - barW - 3
-        local barH  = bounds.h
-        local barY  = bounds.y
-        local fillH = math.max(barH * pct, 1)
-
-        obj.hpBarBg.Position = Vector2.new(barX, barY)
-        obj.hpBarBg.Size     = Vector2.new(barW, barH)
-        obj.hpBarBg.Visible  = true
-
-        obj.hpBar.Position = Vector2.new(barX, barY + barH - fillH)
-        obj.hpBar.Size     = Vector2.new(barW, fillH)
-        obj.hpBar.Color    = Color3.fromHSV(pct * 0.33, 1, 1)
-        obj.hpBar.Visible  = true
-    else
-        obj.hpBarBg.Visible = false
-        obj.hpBar.Visible   = false
-    end
-
-    if _G.DistanciaESP then
-        local myChar = LocalPlayer.Character
-        local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-        local dist = 0
-        if myRoot then
-            local root = char:FindFirstChild("HumanoidRootPart")
-            if root then dist = math.floor((myRoot.Position - root.Position).Magnitude) end
-        end
-        obj.dist.Text     = "[" .. dist .. "m]"
-        obj.dist.Position = Vector2.new(bounds.cx, bounds.y + bounds.h + 2)
-        obj.dist.Color    = colorAlt
-        obj.dist.Visible  = true
-    else
-        obj.dist.Visible = false
-    end
-
-    if _G.TracerESP then
-        local vp = Camera.ViewportSize
-        obj.tracer.From    = Vector2.new(vp.X / 2, vp.Y)
-        obj.tracer.To      = Vector2.new(bounds.cx, bounds.y + bounds.h)
-        obj.tracer.Color   = color
-        obj.tracer.Visible = true
-    else
-        obj.tracer.Visible = false
-    end
-end
-
-local function startESPLoop()
-    if espConn then espConn:Disconnect() end
-    espConn = RunService.RenderStepped:Connect(function()
-        if not _G.ESP then return end
-        for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LocalPlayer then
-                if not espObjects[plr] then createESPForPlayer(plr) end
-                updateESPForPlayer(plr)
-            end
-        end
-    end)
-end
-
-local function stopESPLoop()
-    if espConn then espConn:Disconnect(); espConn = nil end
-    for plr in pairs(espObjects) do removeESPForPlayer(plr) end
-    espObjects = {}
-end
-
-Players.PlayerAdded:Connect(function(plr)
-    if plr ~= LocalPlayer and _G.ESP then createESPForPlayer(plr) end
-end)
-Players.PlayerRemoving:Connect(function(plr)
-    removeESPForPlayer(plr)
-end)
-
-local SA_MIN_DIST = 10
-
-local function isInSafeZone(char)
-    local root = char and char:FindFirstChild("HumanoidRootPart")
-    if not root then return true end
-    if root.Position.Y < -10 then return true end
-    if char:GetAttribute("InSafeZone") then return true end
-    local szFolder = workspace:FindFirstChild("SafeZones")
-    if szFolder then
-        for _, zone in ipairs(szFolder:GetChildren()) do
-            if zone:IsA("BasePart") or zone:IsA("Model") then
-                local part = zone:IsA("BasePart") and zone or zone:FindFirstChildWhichIsA("BasePart")
-                if part then
-                    local rel = part.CFrame:PointToObjectSpace(root.Position)
-                    local half = part.Size / 2
-                    if math.abs(rel.X) <= half.X and math.abs(rel.Y) <= half.Y and math.abs(rel.Z) <= half.Z then
-                        return true
-                    end
-                end
-            end
-        end
-    end
-    return false
-end
-
-local fovCircleOuter = Drawing.new("Circle")
-fovCircleOuter.Visible      = false
-fovCircleOuter.Thickness    = 1.5
-fovCircleOuter.Transparency = 0.85
-fovCircleOuter.NumSides     = 64
-fovCircleOuter.Filled       = false
-
-local fovCircleInner = Drawing.new("Circle")
-fovCircleInner.Visible      = false
-fovCircleInner.Thickness    = 1
-fovCircleInner.Transparency = 0.6
-fovCircleInner.NumSides     = 64
-fovCircleInner.Filled       = false
-
-local fovHideTask = nil
-
-local function getFOVColor()
-    if _G.RainbowESP then
-        return Color3.fromHSV((tick() * 0.4) % 1, 1, 1)
-    end
-    return ESPColorManual
-end
-
-local function showFOVCircle()
-    SA_FOV_SHOW = true
-    if fovHideTask then task.cancel(fovHideTask) end
-    fovHideTask = task.delay(1.5, function()
-        SA_FOV_SHOW = false
-        fovCircleOuter.Visible = false
-        fovCircleInner.Visible = false
-        fovHideTask = nil
-    end)
-end
-
-local function updateFOVCircle()
-    if not SA_FOV_SHOW then return end
-    local vp  = Camera.ViewportSize
-    local cx  = vp.X / 2
-    local cy  = vp.Y / 2
-    local col = getFOVColor()
-
-    fovCircleOuter.Position    = Vector2.new(cx, cy)
-    fovCircleOuter.Radius      = SA_FOV
-    fovCircleOuter.Color       = col
-    fovCircleOuter.Visible     = true
-
-    fovCircleInner.Position    = Vector2.new(cx, cy)
-    fovCircleInner.Radius      = math.max(SA_FOV * 0.35, 8)
-    fovCircleInner.Color       = col
-    fovCircleInner.Visible     = true
-end
-
-local function getCharHeight(char)
-    local root = char:FindFirstChild("HumanoidRootPart")
-    local head = char:FindFirstChild("Head")
-    if not root or not head then return 3.0 end
-    local rootBottom = root.Position.Y - (root.Size.Y / 2)
-    local headTop    = head.Position.Y  + (head.Size.Y / 2)
-    return math.max(headTop - rootBottom, 1.5)
-end
-
-local function getHeadOffset(char, worldDist)
-    local charHeight = getCharHeight(char)
-    local refHeight  = 5.0
-    local heightScale = refHeight / math.max(charHeight, 1.5)
-    local distFactor = (worldDist / 500) ^ 1.4
-    local baseOffset = distFactor * 0.55
-    return baseOffset * heightScale
-end
-
-local SA_WALLCHECK = true
-
-local function isVisible(fromPos, targetPos, targetChar)
-    if not SA_WALLCHECK then return true end
-    local myChar = LocalPlayer.Character
-    local direction = (targetPos - fromPos)
-    local distance  = direction.Magnitude
-    if distance < 0.1 then return true end
-
-    local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = { myChar, targetChar }
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
-    local result = workspace:Raycast(fromPos, direction.Unit * distance, rayParams)
-    return result == nil
-end
-
-local function getSATarget()
-    local vp     = Camera.ViewportSize
-    local center = Vector2.new(vp.X / 2, vp.Y / 2)
-    local best   = nil
-    local bestD  = SA_FOV
-
-    local myChar = LocalPlayer.Character
-    local myRoot = myChar and myChar:FindFirstChild("HumanoidRootPart")
-
-    for _, plr in ipairs(Players:GetPlayers()) do
-        if plr == LocalPlayer then continue end
-        if plr.Team and LocalPlayer.Team and plr.Team == LocalPlayer.Team then continue end
-
-        local char = plr.Character
-        if not char then continue end
-        local hum  = char:FindFirstChildOfClass("Humanoid")
-        local root = char:FindFirstChild("HumanoidRootPart")
-        if not hum or hum.Health <= 0 or not root then continue end
-
-        if isInSafeZone(char) then continue end
-
-        local worldDist = 0
-        if myRoot then
-            worldDist = (myRoot.Position - root.Position).Magnitude
-            if worldDist > SA_MAX_DIST then continue end
-            if worldDist < SA_MIN_DIST then continue end
-        end
-
-        local headPart   = char:FindFirstChild("Head")
-        local targetPart = headPart
-                        or char:FindFirstChild("UpperTorso")
-                        or char:FindFirstChild("Torso")
-                        or root
-
-        local targetPos = targetPart.Position
-
-        if headPart and worldDist > SA_MIN_DIST then
-            local yOffset = getHeadOffset(char, worldDist)
-            targetPos = Vector3.new(targetPos.X, targetPos.Y + yOffset, targetPos.Z)
-        end
-
-        if SA_PREDICTION then
-            local vel   = root.AssemblyLinearVelocity
-            local ping  = 0.08
-            local stats = game:GetService("Stats")
-            if stats then
-                local ok, ms = pcall(function()
-                    return stats.Network.ServerStatsItem["Data Ping"]:GetValue()
-                end)
-                if ok and ms and ms > 0 then ping = ms / 1000 end
-            end
-            local flatVel = Vector3.new(vel.X, 0, vel.Z)
-            targetPos = targetPos + flatVel * ping
-        end
-
-        if targetPos.Y < -5 then continue end
-
-        if not isVisible(Camera.CFrame.Position, targetPos, char) then continue end
-
-        local screenPos, onScreen = Camera:WorldToViewportPoint(targetPos)
-        if not onScreen or screenPos.Z <= 0 then continue end
-
-        local screenV2 = Vector2.new(screenPos.X, screenPos.Y)
-        local d = (screenV2 - center).Magnitude
-        if d < bestD then
-            bestD = d
-            best = { plr = plr, part = targetPart, pos = targetPos, dist = worldDist }
-        end
-    end
-    return best
-end
-
-local function startSALoop()
-    if saLoopConn then saLoopConn:Disconnect() end
-    saLoopConn = RunService.RenderStepped:Connect(function()
-        if not _G.SilentAim then return end
-
-        updateFOVCircle()
-
-        local target = getSATarget()
-        if not target then return end
-
-        local camCF  = Camera.CFrame
-        local lookAt = CFrame.lookAt(camCF.Position, target.pos)
-
-        if SA_SMOOTH then
-            local dt    = game:GetService("RunService").RenderStepped:Wait()
-            local alpha = math.clamp(1 - math.exp(-SA_SMOOTH_SPEED * dt * 10), 0, 1)
-            Camera.CFrame = camCF:Lerp(lookAt, alpha)
-        else
-            Camera.CFrame = lookAt
-        end
-    end)
-    Logger.ok("SILENT AIM", "Loop activo")
-end
-
-local function stopSALoop()
-    if saLoopConn then saLoopConn:Disconnect(); saLoopConn = nil end
-    fovCircleOuter.Visible = false
-    fovCircleInner.Visible = false
-    Logger.ok("SILENT AIM", "Loop detenido")
-end
-
-local function getSources()
-    local sources = {}
-    local bp   = LocalPlayer:FindFirstChild("Backpack")
-    local char = LocalPlayer.Character
-    if bp   and bp.Parent   then table.insert(sources, bp)   end
-    if char and char.Parent then table.insert(sources, char) end
-    return sources
-end
-
-local function getItemConfig(item)
-    local cfg = item:FindFirstChild("Configuration")
-    if cfg then return cfg end
-    for _, child in ipairs(item:GetChildren()) do
-        local nested = child:FindFirstChild("Configuration")
-        if nested then return nested end
-    end
-    return nil
-end
-
-local function getWeapons()
-    local weapons = {}
-    for _, source in ipairs(getSources()) do
-        for _, item in ipairs(source:GetChildren()) do
-            local cfg = getItemConfig(item)
-            if cfg then table.insert(weapons, { item = item, cfg = cfg }) end
-        end
-    end
-    return weapons
-end
-
-local function startWeaponLoop()
-    if weaponLoopConn then weaponLoopConn:Disconnect() end
-    weaponLoopConn = RunService.Heartbeat:Connect(function()
-        local anyActive = _G.NoRecoil or _G.NoSpread or _G.RapidFire or _G.InfiniteAmmo or _G.HighDamage
-        if not anyActive then return end
-
-        for _, w in ipairs(getWeapons()) do
-            local cfg  = w.cfg
-            local item = w.item
-
-            if _G.NoRecoil then
-                for _, prop in ipairs(RECOIL_PROPS) do
-                    local inst = cfg:FindFirstChild(prop)
-                    if inst and inst.Value ~= 0 then inst.Value = 0 end
-                end
-            end
-
-            if _G.NoSpread then
-                for _, prop in ipairs(SPREAD_PROPS) do
-                    local inst = cfg:FindFirstChild(prop)
-                    if inst and inst.Value ~= 0 then inst.Value = 0 end
-                end
-            end
-
-            if _G.RapidFire then
-                local inst = cfg:FindFirstChild("ShotCooldown")
-                if inst and inst.Value > 0.05 then inst.Value = 0.05 end
-            end
-
-            if _G.InfiniteAmmo then
-                local cap = cfg:FindFirstChild("AmmoCapacity")
-                if cap then
-                    local ca = item:FindFirstChild("CurrentAmmo")
-                    if not ca and item.Parent then
-                        ca = item.Parent:FindFirstChild("CurrentAmmo")
-                    end
-                    if ca and ca.Value < cap.Value then ca.Value = cap.Value end
-                end
-            end
-
-            if _G.HighDamage then
-                local dmg = cfg:FindFirstChild("HitDamage")
-                if dmg and dmg.Value ~= 999 then dmg.Value = 999 end
-            end
-        end
-    end)
-    Logger.ok("WEAPON LOOP", "Loop unificado iniciado")
-end
-
-local function onCharacterAdded(char)
-    originalValues = {}
-    Logger.info("PERSONAJE", "Respawn — loops siguen activos")
-end
-
-if LocalPlayer.Character then onCharacterAdded(LocalPlayer.Character) end
-LocalPlayer.CharacterAdded:Connect(function(char)
-    onCharacterAdded(char)
-end)
-
-startWeaponLoop()
-startESPLoop()
 
 local Notifier = Compkiller.newNotify()
 local _BLADEX_LOADING = true
 local function notify(content, duration)
     if _BLADEX_LOADING then return end
     Notifier.new({ Title = "BLADEX HUD", Content = content, Duration = duration or 4, Icon = Compkiller.Logo })
+end
+
+local ConfigManager = Compkiller:ConfigManager({
+    Directory = "BLADEX-HUB",
+    Config    = "BLADEX-PushRockBrainrots",
+})
+
+local RS      = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Events          = RS:WaitForChild("Events", 10)
+local upgradeChar     = Events and Events:WaitForChild("upgradeCharacterEvent", 10)
+local upgradesOpened  = Events and Events:WaitForChild("upgradesMenuOpened", 10)
+local buySolo         = Events and Events:WaitForChild("buySoloEvent", 10)
+local giftToolEvent   = Events and Events:WaitForChild("GiftToolEvent", 10)
+local promptGiftEvent = Events and Events:WaitForChild("PromptToolGiftEvent", 10)
+
+_G.AutoCollectCash     = false
+_G.AutoUpgradeBrainrot = false
+_G.AutoStrength        = false
+_G.AutoAcceptTrade     = false
+_G.AutoSendTrade       = false
+_G.AutoDupe            = false
+
+local selectedPlayer = nil
+local selectedItem   = "Trollface"
+local dupeAmount     = 1
+local activeThreads  = {}
+
+local function startLoop(name, fn)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+    activeThreads[name] = task.spawn(fn)
+end
+
+local function stopLoop(name)
+    if activeThreads[name] then pcall(task.cancel, activeThreads[name]) activeThreads[name] = nil end
+end
+
+local function getServerPlayers()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Players.LocalPlayer then
+            table.insert(list, p.Name)
+        end
+    end
+    if #list == 0 then table.insert(list, "(sin jugadores)") end
+    return list
+end
+
+local function getPlayerByName(name)
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p.Name == name then return p end
+    end
+    return nil
+end
+
+local function getMyBase()
+    local lp   = Players.LocalPlayer
+    local char = lp.Character
+    local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local bases = workspace:FindFirstChild("Bases")
+    if not bases then return nil end
+    local bestBase, bestDist = nil, math.huge
+    local playerPos = hrp.Position
+    for _, base in ipairs(bases:GetChildren()) do
+        local spawn = base:FindFirstChild("SpawnLocation")
+        if spawn then
+            local dist = (spawn.Position - playerPos).Magnitude
+            if dist < bestDist then
+                bestDist = dist
+                bestBase = base
+            end
+        end
+    end
+    return bestBase
+end
+
+local function isSpotUnlocked(spot)
+    local platform    = spot:FindFirstChild("Platform")
+    local upgradePart = platform and platform:FindFirstChild("UpgradePart")
+    return upgradePart and upgradePart:FindFirstChild("UpgradeSurfaceGui") ~= nil
+end
+
+local function getUnlockedSpots(base)
+    local result = {}
+    local spots = base:FindFirstChild("Spots")
+    if not spots then return result end
+    for _, spot in ipairs(spots:GetChildren()) do
+        local num = tonumber(spot.Name)
+        if num and isSpotUnlocked(spot) then
+            table.insert(result, { spot = spot, num = num })
+        end
+    end
+    table.sort(result, function(a, b) return a.num < b.num end)
+    return result
+end
+
+local function executeDupe()
+    local args = { [1] = 0/0 }
+    local ok1 = pcall(function()
+        RS.Events.setCharacterToSpotEvent:FireServer(unpack(args))
+    end)
+    task.wait(0.1)
+    local ok2 = pcall(function()
+        RS.Events.setCharacterToSpotEvent:FireServer(unpack(args))
+    end)
+    if ok1 and ok2 then
+        notify("Dupe ejecutado x" .. dupeAmount, 4)
+    else
+        notify("Error en Dupe", 4)
+    end
+end
+
+local function loopAutoCollectCash()
+    local lp = Players.LocalPlayer
+    while _G.AutoCollectCash do
+        local char = lp.Character
+        local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local base = getMyBase()
+            if base then
+                local unlocked = getUnlockedSpots(base)
+                for _, entry in ipairs(unlocked) do
+                    if not _G.AutoCollectCash then break end
+                    local btn    = entry.spot:FindFirstChild("Button")
+                    local hitbox = btn and btn:FindFirstChild("ButtonHitbox")
+                    if hitbox then
+                        pcall(function()
+                            hrp.CFrame = hitbox.CFrame * CFrame.new(0, 3, 0)
+                        end)
+                        task.wait(0.15)
+                    end
+                end
+            end
+        end
+        task.wait(0.1)
+    end
+end
+
+local function loopAutoUpgradeBrainrot()
+    while _G.AutoUpgradeBrainrot do
+        local base = getMyBase()
+        if base and upgradeChar then
+            for slot = 1, 30 do
+                if not _G.AutoUpgradeBrainrot then break end
+                pcall(function()
+                    upgradeChar:FireServer(slot)
+                end)
+                task.wait(0.1)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end
+
+local function loopAutoStrength()
+    while _G.AutoStrength do
+        if buySolo then
+            pcall(function()
+                buySolo:FireServer(1)
+            end)
+        end
+        task.wait(0.1)
+    end
+end
+
+if giftToolEvent then
+    giftToolEvent.OnClientEvent:Connect(function(action, sender, itemName, tradeId)
+        if not _G.AutoAcceptTrade then return end
+        task.wait(0.1)
+        pcall(function()
+            giftToolEvent:FireServer("Accept", sender, itemName, tradeId)
+        end)
+        notify("Trade aceptado: " .. tostring(itemName) .. " de " .. tostring(sender and sender.Name or "?"), 3)
+    end)
+end
+
+local function loopAutoSendTrade()
+    while _G.AutoSendTrade do
+        if promptGiftEvent and selectedPlayer then
+            local target = getPlayerByName(selectedPlayer)
+            if target then
+                pcall(function()
+                    promptGiftEvent:FireServer(target, selectedItem)
+                end)
+            end
+        end
+        task.wait(0.5)
+    end
 end
 
 Compkiller:Loader(Compkiller.Logo, 2.5).yield()
@@ -601,128 +211,236 @@ local Window = Compkiller.new({
 })
 Window.Minimized = true
 
-local TabStreets = Window:DrawContainerTab({ Name = "Streets", Icon = "lucide-sword" })
+local mainTab = Window:DrawTab({
+    Name            = "Push Rock Brainrots",
+    Icon            = "lucide-sword",
+    Type            = "Double",
+    EnableScrolling = true,
+})
 
-local SubVisual   = TabStreets:DrawTab({ Name = "Visual" })
-local SubSA       = TabStreets:DrawTab({ Name = "Silent Aim" })
-local SubArmas    = TabStreets:DrawTab({ Name = "Armas" })
+local SecLeft  = mainTab:DrawSection({ Name = "Auto Farm", Position = "left",  Minimized = true })
+local SecRight = mainTab:DrawSection({ Name = "Upgrades",  Position = "right", Minimized = true })
 
-local SecESP  = SubVisual:DrawSection({ Name = "ESP",       Side = "left",  Minimized = true })
-local SecOpts = SubVisual:DrawSection({ Name = "Color ESP", Side = "right", Minimized = true })
+local collectToggle = SecLeft:AddToggle({
+    Name     = "Auto Collect Cash",
+    Default  = false,
+    Flag     = "BLADEX_autocollectcash",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoCollectCash = v
+        if v then
+            startLoop("AutoCollectCash", loopAutoCollectCash)
+            notify("Auto Collect Cash activado", 3)
+        else
+            stopLoop("AutoCollectCash")
+            notify("Auto Collect Cash desactivado", 3)
+        end
+    end
+})
+collectToggle:SetValue(false)
 
-SecESP:AddToggle({
-    Name = "ESP Jugadores", Flag = "BLADEX_esp", Risky = false,
+local strengthToggle = SecLeft:AddToggle({
+    Name     = "Auto Strength",
+    Default  = false,
+    Flag     = "BLADEX_autostrength",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoStrength = v
+        if v then
+            startLoop("AutoStrength", loopAutoStrength)
+            notify("Auto Strength activado", 3)
+        else
+            stopLoop("AutoStrength")
+            notify("Auto Strength desactivado", 3)
+        end
+    end
+})
+strengthToggle:SetValue(false)
+
+local upgradeToggle = SecRight:AddToggle({
+    Name     = "Auto Upgrade Brainrot",
+    Default  = false,
+    Flag     = "BLADEX_autoupgradebrainrot",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoUpgradeBrainrot = v
+        if v then
+            startLoop("AutoUpgradeBrainrot", loopAutoUpgradeBrainrot)
+            notify("Auto Upgrade Brainrot activado", 3)
+        else
+            stopLoop("AutoUpgradeBrainrot")
+            notify("Auto Upgrade Brainrot desactivado", 3)
+        end
+    end
+})
+upgradeToggle:SetValue(false)
+
+local dupeTab = Window:DrawTab({
+    Name            = "Dupe",
+    Icon            = "lucide-copy",
+    Type            = "Double",
+    EnableScrolling = true,
+})
+
+local SecDupe = dupeTab:DrawSection({ Name = "Dupe", Position = "left", Minimized = true })
+
+SecDupe:AddSlider({
+    Name     = "Amount",
+    Flag     = "BLADEX_dupeAmount",
+    Min      = 1,
+    Max      = 100,
+    Default  = 1,
+    Suffix   = "x",
     Callback = function(val)
-        _G.ESP = val
-        if val then startESPLoop() else stopESPLoop() end
+        dupeAmount = val
     end,
 })
-SecESP:AddToggle({
-    Name = "Box ESP", Flag = "BLADEX_boxesp", Risky = false,
-    Callback = function(val) _G.BoxESP = val end,
-})
-SecESP:AddToggle({
-    Name = "Nombre Jugador", Flag = "BLADEX_nombreesp", Risky = false,
-    Callback = function(val) _G.NombreESP = val end,
-})
-SecESP:AddToggle({
-    Name = "Vida Jugador", Flag = "BLADEX_vidaesp", Risky = false,
-    Callback = function(val) _G.VidaESP = val end,
-})
-SecESP:AddToggle({
-    Name = "Distancia", Flag = "BLADEX_distanciaesp", Risky = false,
-    Callback = function(val) _G.DistanciaESP = val end,
-})
-SecESP:AddToggle({
-    Name = "Tracers", Flag = "BLADEX_traceresp", Risky = false,
-    Callback = function(val) _G.TracerESP = val end,
-})
 
-SecOpts:AddToggle({
-    Name = "Rainbow ESP", Flag = "BLADEX_rainbowesp", Risky = false,
-    Callback = function(val) _G.RainbowESP = val end,
-})
-SecOpts:AddDropdown({
-    Name     = "Color ESP",
-    Default  = "Rojo",
-    Values   = { "Rojo", "Verde", "Azul", "Blanco", "Amarillo", "Cyan", "Naranja", "Rosa" },
-    Multi    = false,
-    Callback = function(val)
-        if ESP_COLORES[val] then
-            ESPColorManual = ESP_COLORES[val]
-            _G.RainbowESP  = false
+SecDupe:AddButton({
+    Name     = "DUPE",
+    Callback = function()
+        for i = 1, dupeAmount do
+            executeDupe()
+            task.wait(0.15)
         end
     end,
 })
 
-local SecSA    = SubSA:DrawSection({ Name = "Configuracion", Side = "left",  Minimized = true })
-local SecSAOpt = SubSA:DrawSection({ Name = "Opciones",      Side = "right", Minimized = true })
+local SecAutoDupe = dupeTab:DrawSection({ Name = "Auto", Position = "right", Minimized = true })
 
-SecSA:AddToggle({
-    Name = "Silent Aim", Flag = "BLADEX_silentaim", Risky = false,
+SecAutoDupe:AddToggle({
+    Name     = "Auto Dupe",
+    Flag     = "BLADEX_autoDupe",
+    Default  = false,
+    Risky    = false,
     Callback = function(val)
-        _G.SilentAim = val
-        if val then startSALoop() else stopSALoop() end
+        _G.AutoDupe = val
+        if val then
+            startLoop("AutoDupe", function()
+                while _G.AutoDupe do
+                    executeDupe()
+                    task.wait(0.5)
+                end
+            end)
+        else
+            stopLoop("AutoDupe")
+        end
     end,
 })
-SecSA:AddToggle({
-    Name = "Wall Check", Flag = "BLADEX_wallcheck", Risky = false,
-    Default = true,
-    Callback = function(val) SA_WALLCHECK = val end,
-})
-SecSA:AddToggle({
-    Name = "Smooth Aim", Flag = "BLADEX_smoothaim", Risky = false,
-    Callback = function(val) SA_SMOOTH = val end,
-})
-SecSA:AddToggle({
-    Name = "Prediccion", Flag = "BLADEX_prediccion", Risky = false,
-    Callback = function(val) SA_PREDICTION = val end,
+
+local tradeTab = Window:DrawTab({
+    Name            = "Trade",
+    Icon            = "lucide-arrow-left-right",
+    Type            = "Single",
+    EnableScrolling = true,
 })
 
-SecSAOpt:AddSlider({
-    Name = "FOV Radio", Min = 20, Max = 300, Default = 90, Round = 0,
-    Callback = function(val) SA_FOV = val; showFOVCircle() end,
-})
-SecSAOpt:AddSlider({
-    Name = "Velocidad Smooth", Min = 1, Max = 20, Default = 8, Round = 0,
-    Callback = function(val) SA_SMOOTH_SPEED = val end,
-})
-SecSAOpt:AddSlider({
-    Name = "Distancia Max", Min = 50, Max = 1000, Default = 500, Round = 0,
-    Callback = function(val) SA_MAX_DIST = val end,
-})
-SecSAOpt:AddSlider({
-    Name = "Distancia Min", Min = 5, Max = 100, Default = 10, Round = 0,
-    Callback = function(val) SA_MIN_DIST = val end,
+local SecTrade = tradeTab:DrawSection({ Name = "Trade Tools", Position = "full", Minimized = true })
+
+local initialPlayers = getServerPlayers()
+selectedPlayer = initialPlayers[1] ~= "(sin jugadores)" and initialPlayers[1] or nil
+
+local playerDropdown
+playerDropdown = SecTrade:AddDropdown({
+    Name     = "Jugador objetivo",
+    Default  = initialPlayers[1],
+    Values   = initialPlayers,
+    Flag     = "BLADEX_tradeplayer",
+    Callback = function(v)
+        if v == "(sin jugadores)" then
+            selectedPlayer = nil
+        else
+            selectedPlayer = v
+        end
+    end
 })
 
-local SecMods = SubArmas:DrawSection({ Name = "Modificadores", Side = "left",  Minimized = true })
-local SecAmmo = SubArmas:DrawSection({ Name = "Municion",      Side = "right", Minimized = true })
-
-SecMods:AddToggle({
-    Name = "No Recoil", Flag = "BLADEX_norecoil", Risky = false,
-    Callback = function(val) _G.NoRecoil = val end,
-})
-SecMods:AddToggle({
-    Name = "No Spread", Flag = "BLADEX_nospread", Risky = false,
-    Callback = function(val) _G.NoSpread = val end,
-})
-SecMods:AddToggle({
-    Name = "Rapid Fire", Flag = "BLADEX_rapidfire", Risky = false,
-    Callback = function(val) _G.RapidFire = val end,
-})
-SecMods:AddToggle({
-    Name = "High Damage", Flag = "BLADEX_highdamage", Risky = false,
-    Callback = function(val) _G.HighDamage = val end,
+SecTrade:AddButton({
+    Name     = "Refresh jugadores",
+    Callback = function()
+        local nuevos = getServerPlayers()
+        pcall(function()
+            playerDropdown:Refresh(nuevos)
+            selectedPlayer = nuevos[1] ~= "(sin jugadores)" and nuevos[1] or nil
+        end)
+        notify("Jugadores actualizados: " .. #nuevos, 3)
+    end
 })
 
-SecAmmo:AddToggle({
-    Name = "Infinite Ammo", Flag = "BLADEX_infiniteammo", Risky = false,
-    Callback = function(val) _G.InfiniteAmmo = val end,
+SecTrade:AddToggle({
+    Name     = "Auto Send Trade",
+    Default  = false,
+    Flag     = "BLADEX_autosendtrade",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoSendTrade = v
+        if v then
+            if not selectedPlayer then
+                notify("Selecciona un jugador primero", 3)
+                return
+            end
+            startLoop("AutoSendTrade", loopAutoSendTrade)
+            notify("Auto Send Trade activado → " .. (selectedPlayer or "?"), 3)
+        else
+            stopLoop("AutoSendTrade")
+            notify("Auto Send Trade desactivado", 3)
+        end
+    end
 })
 
+SecTrade:AddToggle({
+    Name     = "Auto Accept Trade",
+    Default  = false,
+    Flag     = "BLADEX_autoaccepttrade",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoAcceptTrade = v
+        if v then
+    Callback = function(v)
+        _G.AutoAcceptTrade = v
+        if v then
+            notify("Auto Accept Trade activado", 3)
+        else
+            notify("Auto Accept Trade desactivado", 3)
+        end
+    end
+})
 Window:DrawCategory({ Name = "Extra" })
+
+local ajustesTab = Window:DrawTab({
+    Name = "Ajustes",
+    Icon = "settings",
+    Type = "Single",
+})
+
+local SecAjustes = ajustesTab:DrawSection({ Name = "UI Settings", Position = "full", Minimized = true })
+
+local themes = {
+    Default         = Color3.fromRGB(90, 110, 160),
+    ["Dark Blue"]   = Color3.fromRGB(50, 90, 200),
+    ["Dark Green"]  = Color3.fromRGB(60, 150, 90),
+    ["Purple Rose"] = Color3.fromRGB(160, 80, 160),
+    Skeet           = Color3.fromRGB(200, 60, 60),
+}
+SecAjustes:AddDropdown({
+    Name     = "Select Theme",
+    Default  = "Default",
+    Values   = { "Default", "Dark Blue", "Dark Green", "Purple Rose", "Skeet" },
+    Callback = function(v)
+        Compkiller:ChangeHighlightColor(themes[v] or themes.Default)
+    end
+})
+
+SecAjustes:AddToggle({
+    Name     = "Always Show Frame",
+    Default  = false,
+    Risky    = false,
+    Callback = function(v)
+        pcall(function() Window.AlwaysShowTab = v end)
+    end
+})
+
 Window:DrawConfig({ Name = "Config", Icon = "folder", Config = ConfigManager }):Init()
 
 _BLADEX_LOADING = false
-notify("BLADEX Streets cargado!", 5)
+notify("Push Rock for Brainrots cargado!", 5)
