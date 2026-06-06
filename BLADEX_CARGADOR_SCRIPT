@@ -79,6 +79,7 @@ local function _BLADEX_INIT()
         [110308882298123] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/UpgradeLuckyBlock",        name = "UpgradeLuckyBlock"},
         [117571771385668] = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/Streets",                  name = "Streets"},
         [75888315541325]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/PushRockBrainrots",        name = "Push Rock for Brainrots"},
+        [84575720768520]  = {url = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LuckyBlockRush_SinComentarios_lua", name = "Lucky Block Rush"},
     }
 
     if _getgenv()._BLADEX_LOADING then
