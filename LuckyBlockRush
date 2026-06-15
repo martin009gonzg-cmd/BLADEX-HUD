@@ -1,4 +1,3 @@
-
 Compkiller:OptimizeMode(true)
 Compkiller:ChangeHighlightColor(Compkiller.Colors.Toggle)
 
@@ -19,9 +18,7 @@ local Players     = game:GetService("Players")
 local LocalPlayer = Players.LocalPlayer
 
 local function findKnit()
-    local ok, idx = pcall(function()
-        return RS.Packages._Index
-    end)
+    local ok, idx = pcall(function() return RS.Packages._Index end)
     if not ok then return nil end
     for _, folder in ipairs(idx:GetChildren()) do
         if folder.Name:lower():match("knit") then
@@ -67,45 +64,136 @@ local function safeFireRE(remote, ...)
     return ok
 end
 
-local rfTrain          = findRF("TrainingService",      "Train")
-local rfStartTraining  = findRF("PlayerStateService",   "StartTraining")
-local rfStopTraining   = findRF("PlayerStateService",   "StopTraining")
-local rfClaimBonus     = findRF("TrainingService",      "ClaimBonus")
-local rfAttack         = findRF("CombatService",        "Attack")
-local rfStartCombat    = findRF("CombatService",        "Start")
-local rfFinishCombat   = findRF("CombatService",        "Finish")
-local rfProceed        = findRF("CombatService",        "ProceedTransition")
-local rfPlaceBest      = findRF("ContainerService",     "PlaceBest")
-local rfUpgrade        = findRF("ContainerService",     "UpgradeBrainrot")
-local rfCollectOffline = findRF("ContainerService",     "CollectOfflineCash")
-local rfSellAll        = findRF("InventoryService",     "SellAllBrainrots")
-local rfSellLucky      = findRF("InventoryService",     "SellLuckyBlock")
-local rfRebirth        = findRF("RebirthService",       "Rebirth")
-local rfClaimQuest     = findRF("QuestService",         "ClaimReward")
-local rfRefreshQuests  = findRF("QuestService",         "RefreshQuests")
-local rfClaimPass      = findRF("SeasonPassService",    "ClaimPassReward")
-local rfClaimPlaytime  = findRF("PlaytimeRewardService","ClaimGift")
-local rfClaimFreeShop  = findRF("FreeShopService",      "Claim")
-local rfClaimDisc      = findRF("DiscService",          "GetReward")
-local rfClaimLimited   = findRF("RewardService",        "ClaimLimitedReward")
-local rfGroupReward    = findRF("RewardService",        "GroupReward")
-local rfNextEvent      = findRF("RewardService",        "NextEvent")
-local rfUsePotion      = findRF("PotionService",        "UsePotion")
-local rfChangeBiome    = findRF("BiomeService",         "ChangeBiome")
-local rfGetMyPlotId    = findRF("PlotService",          "GetMyPlotId")
-local reSpin           = findRE("SpinWheelService",     "SpinWheelFinished")
+local rfTrain          = findRF("TrainingService",    "Train")
+local rfStartTraining  = findRF("PlayerStateService", "StartTraining")
+local rfStopTraining   = findRF("PlayerStateService", "StopTraining")
+local rfClaimBonus     = findRF("TrainingService",    "ClaimBonus")
+local rfAttack         = findRF("CombatService",      "Attack")
+local rfStartCombat    = findRF("CombatService",      "Start")
+local rfFinishCombat   = findRF("CombatService",      "Finish")
+local rfProceed        = findRF("CombatService",      "ProceedTransition")
+local rfPlaceBest      = findRF("ContainerService",   "PlaceBest")
+local rfUpgrade        = findRF("ContainerService",   "UpgradeBrainrot")
+local rfRebirth        = findRF("RebirthService",     "Rebirth")
+local rfClaimDisc      = findRF("DiscService",        "GetReward")
+local rfGetMyPlotId    = findRF("PlotService",        "GetMyPlotId")
+local rfSellBrainrot   = findRF("InventoryService",   "SellBrainrot")
+local rfSellLuckyBlock = findRF("InventoryService",   "SellLuckyBlock")
+local reSpin           = findRE("SpinWheelService",   "SpinWheelFinished")
 
-_G.AutoTraining      = false
-_G.AutoCombatNormal  = false
-_G.AutoCombatRapido  = false
-_G.AutoPlaceBest     = false
-_G.AutoSellAll       = false
-_G.AutoRebirth       = false
-_G.AutoCollectCash   = false
-_G.AutoUpgrade       = false
-_G.AutoPotion             = false
+local RunService      = game:GetService("RunService")
+local Bosses          = workspace:WaitForChild("Bosses")
+local _bossRunning    = false
+local _bossAttackLoop = nil
+local _bossMonitor    = nil
+
+local function getBossRemote(name)
+    local knit = RS.Packages._Index:FindFirstChild("sleitnick_knit@1.7.0")
+    if not knit then return nil end
+    return knit.knit.Services.GlobalBossEventService.RF:FindFirstChild(name)
+end
+
+local function bossTeleport()
+    local r = getBossRemote("TeleportToWorld")
+    if r then r:InvokeServer() task.wait(1.5) end
+end
+
+local function bossEnd()
+    local r = getBossRemote("End")
+    if r then pcall(r.InvokeServer, r) end
+end
+
+local function bossStopAll()
+    _bossRunning = false
+    if _bossAttackLoop then _bossAttackLoop:Disconnect() _bossAttackLoop = nil end
+    if _bossMonitor    then _bossMonitor:Disconnect()    _bossMonitor    = nil end
+end
+
+local function bossStartAttack(boss)
+    local lastAttack = 0
+    _bossAttackLoop = RunService.Heartbeat:Connect(function()
+        if not _bossRunning then return end
+        if not boss or not boss.Parent then bossEnd() bossStopAll() return end
+        local hp = boss:GetAttribute("Hp")
+        if hp and hp <= 0 then bossEnd() bossStopAll() return end
+        local now = os.clock()
+        if now - lastAttack >= 2 then
+            lastAttack = now
+            pcall(function()
+                local controller = require(
+                    LocalPlayer.PlayerScripts
+                        :WaitForChild("Controllers")
+                        :WaitForChild("GlobalBossController")
+                )
+                if controller and controller.AttackBoss then
+                    controller:AttackBoss()
+                end
+            end)
+        end
+    end)
+end
+
+local function bossStartMonitor(boss)
+    _bossMonitor = RunService.Heartbeat:Connect(function()
+        if not _bossRunning then return end
+        if not boss or not boss.Parent then bossEnd() bossStopAll() return end
+        local hp = boss:GetAttribute("Hp")
+        if hp and hp <= 0 then bossEnd() bossStopAll() return end
+        if not LocalPlayer:GetAttribute("InGlobalBossWorld") then
+            if _bossAttackLoop then _bossAttackLoop:Disconnect() _bossAttackLoop = nil end
+            bossTeleport()
+            if boss and boss.Parent then
+                local currentHp = boss:GetAttribute("Hp")
+                if not currentHp or currentHp > 0 then
+                    bossStartAttack(boss)
+                else
+                    bossEnd() bossStopAll()
+                end
+            else
+                bossEnd() bossStopAll()
+            end
+        end
+    end)
+end
+
+local function bossOnDetected(boss)
+    if _bossRunning then bossStopAll() end
+    _bossRunning = true
+    if not LocalPlayer:GetAttribute("InGlobalBossWorld") then bossTeleport() end
+    if not boss or not boss.Parent then _bossRunning = false return end
+    bossStartAttack(boss)
+    bossStartMonitor(boss)
+end
+
+local _bossChildConn = nil
+
+local function startAutoBoss()
+    local existing = Bosses:FindFirstChild("globalBoss1")
+    if existing then bossOnDetected(existing) end
+    _bossChildConn = Bosses.ChildAdded:Connect(function(child)
+        if child.Name == "globalBoss1" then bossOnDetected(child) end
+    end)
+end
+
+local function stopAutoBoss()
+    bossStopAll()
+    if _bossChildConn then _bossChildConn:Disconnect() _bossChildConn = nil end
+end
+
+_G.AutoBossMagia          = false
+_G.AutoTraining           = false
+_G.AutoCombatNormal       = false
+_G.AutoCombatRapido       = false
+_G.AutoPlaceBest          = false
+_G.AutoRebirth            = false
+_G.AutoCollectCash        = false
+_G.AutoUpgrade            = false
 _G.AntiAFK                = false
+_G.AutoPlaytimeRewards    = false
 _G.AutoShellInteligente   = false
+_G.AutoSellLuckyBlock     = false
+_G.ShellSellRarities      = {}
+_G.ShellSellMutations     = {}
 
 local trainDelay  = 0.5
 local combatDelay = 0.2
@@ -130,24 +218,20 @@ end
 
 local function equipWeapon()
     pcall(function()
-        local char = LocalPlayer.Character
+        local char    = LocalPlayer.Character
         local backpack = LocalPlayer.Backpack
         if not char or not backpack then return end
-
         for _, item in ipairs(char:GetChildren()) do
             if item:IsA("Tool") and item.Name ~= "Weapon" then
                 item.Parent = backpack
             end
         end
-
         local weapon = backpack:FindFirstChild("Weapon")
-        if weapon then
-            weapon.Parent = char
-        end
+        if weapon then weapon.Parent = char end
     end)
 end
 
-local hooked = {}
+local hooked   = {}
 local lastFire = 0
 local COOLDOWN = 0.1
 
@@ -157,12 +241,8 @@ local function fireButton(btn)
     lastFire = now
     if getconnections then
         pcall(function()
-            for _, conn in ipairs(getconnections(btn.Activated)) do
-                pcall(conn.Function)
-            end
-            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do
-                pcall(conn.Function)
-            end
+            for _, conn in ipairs(getconnections(btn.Activated)) do pcall(conn.Function) end
+            for _, conn in ipairs(getconnections(btn.MouseButton1Click)) do pcall(conn.Function) end
         end)
     end
     if firesignal then
@@ -185,14 +265,10 @@ local function hookObj(obj)
     if hooked[obj] then return end
     if not isX2Button(obj) then return end
     hooked[obj] = true
-    if obj.Visible then
-        fireButton(obj)
-    end
+    if obj.Visible then fireButton(obj) end
     obj:GetPropertyChangedSignal("Visible"):Connect(function()
         if not _G.AutoTraining then return end
-        if obj.Visible then
-            fireButton(obj)
-        end
+        if obj.Visible then fireButton(obj) end
     end)
     local parent = obj.Parent
     if parent then
@@ -200,9 +276,7 @@ local function hookObj(obj)
             if not _G.AutoTraining then return end
             if parent.Visible then
                 local btn = parent:FindFirstChild("Button")
-                if btn and btn:IsA("ImageButton") then
-                    fireButton(btn)
-                end
+                if btn and btn:IsA("ImageButton") then fireButton(btn) end
             end
         end)
     end
@@ -210,9 +284,7 @@ end
 
 local playerGui = LocalPlayer:WaitForChild("PlayerGui", 10)
 if playerGui then
-    for _, obj in ipairs(playerGui:GetDescendants()) do
-        hookObj(obj)
-    end
+    for _, obj in ipairs(playerGui:GetDescendants()) do hookObj(obj) end
     playerGui.DescendantAdded:Connect(function(obj)
         if not _G.AutoTraining then return end
         hookObj(obj)
@@ -235,7 +307,6 @@ local function loopAutoCombatNormal()
     while _G.AutoCombatNormal do
         safeInvoke(rfStartCombat)
         task.wait(0.5)
-
         local startTime = tick()
         while _G.AutoCombatNormal and (tick() - startTime) < 20 do
             safeInvoke(rfAttack)
@@ -243,7 +314,6 @@ local function loopAutoCombatNormal()
             safeInvoke(rfProceed)
             task.wait(combatDelay)
         end
-
         safeInvoke(rfFinishCombat)
         task.wait(2)
     end
@@ -253,7 +323,6 @@ local function loopAutoCombatRapido()
     while _G.AutoCombatRapido do
         safeInvoke(rfStartCombat)
         task.wait(0.5)
-
         for i = 1, 7 do
             if not _G.AutoCombatRapido then break end
             safeInvoke(rfAttack)
@@ -261,7 +330,6 @@ local function loopAutoCombatRapido()
             safeInvoke(rfProceed)
             task.wait(combatDelay)
         end
-
         safeInvoke(rfFinishCombat)
         task.wait(2)
     end
@@ -298,14 +366,10 @@ local function loopAutoCollectCash()
         if plots then
             local uid = LocalPlayer.UserId
             for _, plotModel in ipairs(plots:GetChildren()) do
-                local owner = plotModel:GetAttribute("OwnerId")
-                    or plotModel:GetAttribute("Owner")
-                    or plotModel:GetAttribute("PlayerId")
+                local owner = plotModel:GetAttribute("OwnerId") or plotModel:GetAttribute("Owner") or plotModel:GetAttribute("PlayerId")
                 if owner == uid then cachedPlotId = plotModel.Name return cachedPlotId end
                 for _, sub in ipairs(plotModel:GetChildren()) do
-                    local subOwner = sub:GetAttribute("OwnerId")
-                        or sub:GetAttribute("Owner")
-                        or sub:GetAttribute("PlayerId")
+                    local subOwner = sub:GetAttribute("OwnerId") or sub:GetAttribute("Owner") or sub:GetAttribute("PlayerId")
                     if subOwner == uid then cachedPlotId = plotModel.Name return cachedPlotId end
                 end
             end
@@ -317,7 +381,7 @@ local function loopAutoCollectCash()
         if not pad then return end
         pcall(function()
             local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-            local cd = pad:FindFirstChildOfClass("ClickDetector")
+            local cd  = pad:FindFirstChildOfClass("ClickDetector")
             if cd then fireclickdetector(cd) return end
             local pp = pad:FindFirstChildOfClass("ProximityPrompt")
             if pp then fireproximityprompt(pp) return end
@@ -330,17 +394,17 @@ local function loopAutoCollectCash()
     end
 
     local function getPads(plotId)
-        local pads = {}
+        local pads  = {}
         local plots = workspace:FindFirstChild("Plots")
         if not plots then return pads end
         local plotModel = plots:FindFirstChild(plotId)
         if not plotModel then return pads end
-        local subPlot = plotModel:FindFirstChild(plotId) or plotModel:GetChildren()[1]
+        local subPlot   = plotModel:FindFirstChild(plotId) or plotModel:GetChildren()[1]
         if not subPlot then return pads end
         local containers = subPlot:FindFirstChild("Containers")
         if not containers then return pads end
         for slot = 1, 30 do
-            local slotStr = tostring(slot)
+            local slotStr  = tostring(slot)
             local slotCont = containers:FindFirstChild(slotStr)
             if slotCont then
                 local subCont = slotCont:FindFirstChild(slotStr) or slotCont:GetChildren()[1]
@@ -368,35 +432,24 @@ local function loopAutoCollectCash()
     end
 end
 
-local function loopAutoSellAll()
-    while _G.AutoSellAll do
-        safeInvoke(rfSellAll)
-        safeInvoke(rfSellLucky)
-        task.wait(5)
-    end
-end
-
 local function loopAutoRebirth()
     while _G.AutoRebirth do
-        local ok, _ = safeInvoke(rfRebirth)
-        if ok then notify("Auto Rebirth ejecutado!", 4) end
+        safeInvoke(rfRebirth)
         task.wait(3)
     end
 end
 
 if reSpin then
-    reSpin.OnClientEvent:Connect(function(reward)
-        notify("Spin terminado! Reward: " .. tostring(reward), 5)
-    end)
+    reSpin.OnClientEvent:Connect(function(reward) end)
 end
 
-local _GodMode = false
+local _GodMode       = false
 local godCharWatcher = nil
-local godHumConn = nil
+local godHumConn     = nil
 
 local function stopGodMode()
     if godCharWatcher then pcall(function() godCharWatcher:Disconnect() end) godCharWatcher = nil end
-    if godHumConn then pcall(function() godHumConn:Disconnect() end) godHumConn = nil end
+    if godHumConn     then pcall(function() godHumConn:Disconnect()     end) godHumConn     = nil end
     local char = LocalPlayer.Character
     if char then
         local hum = char:FindFirstChildOfClass("Humanoid")
@@ -443,151 +496,6 @@ local function loopGodMode()
     stopGodMode()
 end
 
-local function loopAutoPotion()
-    while _G.AutoPotion do
-        safeInvoke(rfUsePotion)
-        task.wait(3)
-    end
-end
-
-local suffixes = {
-    ["K"]  = 1e3,  ["M"]  = 1e6,  ["B"]  = 1e9,
-    ["T"]  = 1e12, ["Qa"] = 1e15, ["Qi"] = 1e18,
-    ["Sx"] = 1e21, ["Sp"] = 1e24,
-}
-
-local function parseValue(str)
-    if not str then return 0 end
-    str = tostring(str):gsub("%$",""):gsub("%s","")
-    for suffix, mult in pairs(suffixes) do
-        local num = str:match("^([%d%.]+)" .. suffix .. "$")
-        if num then return tonumber(num) * mult end
-    end
-    return tonumber(str) or 0
-end
-
-local rarityWeight = {
-    ["Normal"] = 1, ["Candy"] = 2, ["Gold"] = 3,
-    ["Diamond"] = 4, ["Void"] = 5,
-}
-
-local function getRarityWeight(str)
-    if not str then return 1 end
-    for k, v in pairs(rarityWeight) do
-        if str:lower() == k:lower() then return v end
-    end
-    return 1
-end
-
-local function hasMutation(skillTagText)
-    if not skillTagText then return false end
-    local t = skillTagText:lower():gsub("%s","")
-    return t ~= "sell$" and t ~= "sell" and t ~= ""
-end
-
-local SHELL_LIMIT  = 190
-local SHELL_TARGET = 189
-
-local rfSellBrainrot = findRF("InventoryService", "SellBrainrot")
-
-local function getScrollingFrame()
-    local pg      = LocalPlayer:FindFirstChild("PlayerGui")
-    local windows = pg and pg:FindFirstChild("Windows")
-    local sb      = windows and windows:FindFirstChild("SellBrainrots")
-    local sc      = sb and sb:FindFirstChild("ShopContainer")
-    return sc and sc:FindFirstChild("ScrollingFrame")
-end
-
-local function countInventory()
-    local sf = getScrollingFrame()
-    if not sf then return 0 end
-    local count = 0
-    for _, card in ipairs(sf:GetChildren()) do
-        if card.Name ~= "UIGridLayout" and card.Name ~= "UIListLayout" then
-            count = count + 1
-        end
-    end
-    return count
-end
-
-local function readInventory()
-    local sf = getScrollingFrame()
-    if not sf then return nil, 0 end
-    local result = {}
-    local count  = 0
-    for _, card in ipairs(sf:GetChildren()) do
-        if card.Name ~= "UIGridLayout" and card.Name ~= "UIListLayout" then
-            count = count + 1
-            local main = card:FindFirstChild("Main")
-            if main then
-                local rarityTxt = (main:FindFirstChild("Rarity")    and main.Rarity.Text)    or "Normal"
-                local cashTxt   = (main:FindFirstChild("Cash")      and main.Cash.Text)      or "0$"
-                local nameTxt   = (main:FindFirstChild("TextLabel") and main.TextLabel.Text) or card.Name
-                local skillTxt  = (main:FindFirstChild("SkillTag")  and main.SkillTag.Text)  or "Sell $"
-                local levelTxt  = (main:FindFirstChild("Level")     and main.Level.Text)     or "Lvl 1"
-                table.insert(result, {
-                    uid      = card.Name,
-                    name     = nameTxt,
-                    rarity   = rarityTxt,
-                    weight   = getRarityWeight(rarityTxt),
-                    cash     = parseValue(cashTxt),
-                    cashText = cashTxt,
-                    mutation = hasMutation(skillTxt),
-                    skillTag = skillTxt,
-                    level    = levelTxt,
-                })
-            end
-        end
-    end
-    return result, count
-end
-
-local function selectToSell(inventory, needed)
-    local noMut = {}
-    for _, b in ipairs(inventory) do
-        if not b.mutation then table.insert(noMut, b) end
-    end
-    table.sort(noMut, function(a, b)
-        if a.weight ~= b.weight then return a.weight < b.weight end
-        return a.cash < b.cash
-    end)
-    local toSell = {}
-    for i = 1, math.min(needed, #noMut) do
-        table.insert(toSell, noMut[i])
-    end
-    return toSell
-end
-
-local function doShell()
-    local inv, total = readInventory()
-    if not inv then return end
-    if total < SHELL_LIMIT then return end
-    local needed = total - SHELL_TARGET
-    if needed <= 0 then return end
-    local toSell = selectToSell(inv, needed)
-    if #toSell == 0 then return end
-    for _, b in ipairs(toSell) do
-        if not rfSellBrainrot then break end
-        pcall(rfSellBrainrot.InvokeServer, rfSellBrainrot, b.uid)
-        task.wait(0.15)
-    end
-end
-
-local function loopAutoShellInteligente()
-    local lastCount = countInventory()
-    while _G.AutoShellInteligente do
-        local current = countInventory()
-        if current ~= lastCount then
-            lastCount = current
-            if current >= SHELL_LIMIT then
-                pcall(doShell)
-                lastCount = countInventory()
-            end
-        end
-        task.wait(0.5)
-    end
-end
-
 local function loopAntiAFK()
     while _G.AntiAFK do
         task.wait(55)
@@ -604,7 +512,184 @@ local function loopAntiAFK()
     end
 end
 
-Compkiller:Loader(Compkiller.Logo, 2.5).yield()
+local _playtimeClaimRF    = nil
+local _playtimeController = nil
+local _playtimeGiftTimes  = {60,180,300,420,600,900,1200,1800,2700,3600,5400,7200}
+
+local function getPlaytimeRF()
+    if _playtimeClaimRF then return _playtimeClaimRF end
+    pcall(function()
+        _playtimeClaimRF = RS.Packages._Index
+            :FindFirstChild("sleitnick_knit@1.7.0")
+            .knit.Services.PlaytimeRewardService.RF.ClaimGift
+    end)
+    return _playtimeClaimRF
+end
+
+local function getPlaytimeController()
+    if _playtimeController then return _playtimeController end
+    pcall(function()
+        local c = require(LocalPlayer.PlayerScripts.Controllers.PlaytimeRewardController)
+        if c then _playtimeController = c end
+    end)
+    return _playtimeController
+end
+
+local function getSessionTime()
+    local c = getPlaytimeController()
+    if not c then return 0 end
+    local ok, t = pcall(function() return c:GetSessionTime() end)
+    return ok and type(t) == "number" and t or 0
+end
+
+local function isGiftClaimed(i)
+    local c = getPlaytimeController()
+    if not c then return false end
+    local ok, r = pcall(function() return c:IsGiftClaimed(i) end)
+    return ok and r == true
+end
+
+local function loopAutoPlaytimeRewards()
+    for _ = 1, 20 do
+        if not _G.AutoPlaytimeRewards then return end
+        if getPlaytimeController() then break end
+        task.wait(1)
+    end
+    for _ = 1, 30 do
+        if not _G.AutoPlaytimeRewards then return end
+        if getSessionTime() > 0 then break end
+        task.wait(1)
+    end
+    local claimed = {}
+    local function claimAvailable()
+        local rf = getPlaytimeRF()
+        if not rf then return end
+        local sessionTime = getSessionTime()
+        for i = 1, 12 do
+            if not _G.AutoPlaytimeRewards then return end
+            if claimed[i] then continue end
+            if sessionTime < _playtimeGiftTimes[i] then continue end
+            local ok, res = pcall(rf.InvokeServer, rf, i)
+            if ok and res == true then
+                claimed[i] = true
+                task.wait(0.3)
+                if i == 12 then
+                    task.wait(2)
+                    claimed = {}
+                end
+            elseif ok and res == false then
+                claimed[i] = true
+            end
+        end
+    end
+    claimAvailable()
+    while _G.AutoPlaytimeRewards do
+        task.wait(5)
+        claimAvailable()
+    end
+end
+
+local replicaController = nil
+local function getReplicaController()
+    if replicaController then return replicaController end
+    pcall(function()
+        local Knit = require(RS.Packages.Knit)
+        replicaController = Knit.GetController("ReplicaController")
+    end)
+    return replicaController
+end
+
+local function getPlayerInventory()
+    local rc = getReplicaController()
+    if not rc then return nil end
+    local ok, data = pcall(function() return rc:GetPlayerData() end)
+    if not ok or not data then return nil end
+    return data.Inventory
+end
+
+local MUTATION_MAP = {
+    NORMAL   = "Normal",
+    CANDY    = "Candy",
+    GOLD     = "Gold",
+    DIAMOND  = "Diamond",
+    VOID     = "Void",
+}
+
+local function getMutationLabel(mutationKey)
+    if not mutationKey then return "Normal" end
+    return MUTATION_MAP[mutationKey:upper()] or (mutationKey:sub(1,1):upper() .. mutationKey:sub(2):lower())
+end
+
+local function shouldSell(mutLabel, rarityLabel)
+    local sellMut = _G.ShellSellMutations or {}
+    local sellRar = _G.ShellSellRarities  or {}
+    if #sellMut == 0 and #sellRar == 0 then return false end
+
+    local mutOk = (#sellMut == 0)
+    if not mutOk then
+        for _, m in ipairs(sellMut) do
+            if mutLabel:lower() == m:lower() then mutOk = true break end
+        end
+    end
+
+    local rarOk = (#sellRar == 0)
+    if not rarOk then
+        for _, r in ipairs(sellRar) do
+            if rarityLabel:lower() == r:lower() then rarOk = true break end
+        end
+    end
+
+    if #sellMut > 0 and #sellRar > 0 then return mutOk and rarOk end
+    if #sellMut > 0 then return mutOk end
+    return rarOk
+end
+
+local function loopAutoSellBrainrots()
+    while _G.AutoShellInteligente do
+        pcall(function()
+            if not rfSellBrainrot then return end
+            local inv = getPlayerInventory()
+            if not inv then return end
+
+            for uid, item in pairs(inv) do
+                if not _G.AutoShellInteligente then break end
+                if item.itemType == "Brainrot" then
+                    local entity     = item.innerEntity
+                    if not entity then continue end
+                    local mutKey     = entity.mutation or "NORMAL"
+                    local mutLabel   = getMutationLabel(mutKey)
+                    local rarLabel   = entity.rarity or "Normal"
+
+                    if shouldSell(mutLabel, rarLabel) then
+                        pcall(rfSellBrainrot.InvokeServer, rfSellBrainrot, entity.id)
+                        task.wait(0.15)
+                    end
+                end
+            end
+        end)
+        task.wait(0.5)
+    end
+end
+
+local function loopAutoSellLuckyBlock()
+    while _G.AutoSellLuckyBlock do
+        pcall(function()
+            if not rfSellLuckyBlock then return end
+            local inv = getPlayerInventory()
+            if not inv then return end
+
+            for uid, item in pairs(inv) do
+                if not _G.AutoSellLuckyBlock then break end
+                if item.itemType == "LuckyBlock" then
+                    pcall(rfSellLuckyBlock.InvokeServer, rfSellLuckyBlock, uid)
+                    task.wait(0.12)
+                end
+            end
+        end)
+        task.wait(0.5)
+    end
+end
+
 
 local Window = Compkiller.new({
     Name     = "BLADEX HUD",
@@ -622,9 +707,10 @@ local mainTab = Window:DrawTab({
     EnableScrolling = true,
 })
 
-local secLeft  = mainTab:DrawSection({ Name = "Auto Farm",   Position = "left",  Minimized = true })
-local secRight = mainTab:DrawSection({ Name = "Auto Combat", Position = "right", Minimized = true })
-local secExtra = mainTab:DrawSection({ Name = "Extra",       Position = "left",  Minimized = true })
+local secLeft     = mainTab:DrawSection({ Name = "Auto Farm",   Position = "left",  Minimized = true })
+local secAutoSell = mainTab:DrawSection({ Name = "Auto Sell",   Position = "left",  Minimized = true })
+local secRight    = mainTab:DrawSection({ Name = "Auto Combat", Position = "right", Minimized = true })
+local secExtra    = mainTab:DrawSection({ Name = "Extra",       Position = "right", Minimized = true })
 
 local togPlaceBest = secLeft:AddToggle({
     Name     = "Auto Place Best",
@@ -635,7 +721,6 @@ local togPlaceBest = secLeft:AddToggle({
         _G.AutoPlaceBest = v
         if v then startLoop("AutoPlaceBest", loopAutoPlaceBest)
         else stopLoop("AutoPlaceBest") end
-        notify(v and "Auto Place Best ON" or "Auto Place Best OFF", 3)
     end
 })
 togPlaceBest:SetValue(false)
@@ -649,7 +734,6 @@ local togUpgrade = secLeft:AddToggle({
         _G.AutoUpgrade = v
         if v then startLoop("AutoUpgrade", loopAutoUpgrade)
         else stopLoop("AutoUpgrade") end
-        notify(v and "Auto Upgrade ON" or "Auto Upgrade OFF", 3)
     end
 })
 togUpgrade:SetValue(false)
@@ -663,38 +747,96 @@ local togCollect = secLeft:AddToggle({
         _G.AutoCollectCash = v
         if v then startLoop("AutoCollectCash", loopAutoCollectCash)
         else stopLoop("AutoCollectCash") end
-        notify(v and "Auto Collect Cash ON" or "Auto Collect Cash OFF", 3)
     end
 })
 togCollect:SetValue(false)
 
-local togSell = secLeft:AddToggle({
-    Name     = "Auto Sell All (Inventario)",
+local togRebirth = secLeft:AddToggle({
+    Name     = "Auto Rebirth",
     Default  = false,
-    Flag     = "BLADEX_sellall",
+    Flag     = "BLADEX_rebirth",
     Risky    = false,
     Callback = function(v)
-        _G.AutoSellAll = v
-        if v then startLoop("AutoSellAll", loopAutoSellAll)
-        else stopLoop("AutoSellAll") end
-        notify(v and "Auto Sell All ON" or "Auto Sell All OFF", 3)
+        _G.AutoRebirth = v
+        if v then startLoop("AutoRebirth", loopAutoRebirth)
+        else stopLoop("AutoRebirth") end
     end
 })
-togSell:SetValue(false)
+togRebirth:SetValue(false)
 
-local togShellInteligente = secLeft:AddToggle({
-    Name     = "Auto Sell All (Inteligente)",
+secAutoSell:AddToggle({
+    Name     = "Auto Sell Brainrots",
     Default  = false,
     Flag     = "BLADEX_shellinteligente",
     Risky    = false,
     Callback = function(v)
         _G.AutoShellInteligente = v
-        if v then startLoop("AutoShellInteligente", loopAutoShellInteligente)
+        if v then startLoop("AutoShellInteligente", loopAutoSellBrainrots)
         else stopLoop("AutoShellInteligente") end
-        notify(v and "Auto Sell Inteligente ON" or "Auto Sell Inteligente OFF", 3)
     end
 })
-togShellInteligente:SetValue(false)
+
+secAutoSell:AddToggle({
+    Name     = "Auto Sell Lucky Block",
+    Default  = false,
+    Flag     = "BLADEX_sellluckyblock",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoSellLuckyBlock = v
+        if v then startLoop("AutoSellLuckyBlock", loopAutoSellLuckyBlock)
+        else stopLoop("AutoSellLuckyBlock") end
+    end
+})
+
+secAutoSell:AddDropdown({
+    Name     = "Rareza a Vender",
+    Default  = {},
+    Values   = {
+        "Normal","Epic","Gold",
+        "Admin","Alien","Angelic","Blackfrost","CYBER","Circus",
+        "Corrupted","Cosmic","Crystal","Dark Star","Demonic",
+        "Divine","Easter","Eternal","GOD","Glacial","Hacked",
+        "Ink","Magma","SPECIAL","Secret","Titanium","Victorious","Xeon"
+    },
+    Multi    = true,
+    Flag     = "BLADEX_shell_sell_rarities",
+    Risky    = false,
+    Callback = function(v)
+        local list = {}
+        for k, selected in pairs(v) do
+            if selected then table.insert(list, k) end
+        end
+        _G.ShellSellRarities = list
+    end
+})
+
+secAutoSell:AddDropdown({
+    Name     = "Mutación a Vender",
+    Default  = {},
+    Values   = { "Normal", "Candy", "Gold", "Diamond", "Void" },
+    Multi    = true,
+    Flag     = "BLADEX_shell_sell_mutations",
+    Risky    = false,
+    Callback = function(v)
+        local list = {}
+        for k, selected in pairs(v) do
+            if selected then table.insert(list, k) end
+        end
+        _G.ShellSellMutations = list
+    end
+})
+
+secRight:AddToggle({
+    Name     = "Auto Boss Magia",
+    Default  = false,
+    Flag     = "BLADEX_autobossmagia",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoBossMagia = v
+        if v then startAutoBoss()
+        else stopAutoBoss() end
+    end
+})
 
 local togTraining = secRight:AddToggle({
     Name     = "Auto Training",
@@ -705,7 +847,6 @@ local togTraining = secRight:AddToggle({
         _G.AutoTraining = v
         if v then startLoop("AutoTraining", loopAutoTraining)
         else stopLoop("AutoTraining") end
-        notify(v and "Auto Training ON" or "Auto Training OFF", 3)
     end
 })
 togTraining:SetValue(false)
@@ -724,7 +865,6 @@ local togCombatNormal = secRight:AddToggle({
         else
             stopLoop("AutoCombatNormal")
         end
-        notify(v and "Auto Combat Normal ON" or "Auto Combat Normal OFF", 3)
     end
 })
 togCombatNormal:SetValue(false, true)
@@ -743,32 +883,9 @@ local togCombatRapido = secRight:AddToggle({
         else
             stopLoop("AutoCombatRapido")
         end
-        notify(v and "Auto Combat Rápido ON" or "Auto Combat Rápido OFF", 3)
     end
 })
 togCombatRapido:SetValue(false, true)
-
-secExtra:AddButton({
-    Name     = "Claim Disc Reward",
-    Callback = function()
-        local ok, _ = safeInvoke(rfClaimDisc)
-        notify(ok and "Disc reward reclamado!" or "No disponible aun", 3)
-    end
-})
-
-local togRebirth = secLeft:AddToggle({
-    Name     = "Auto Rebirth",
-    Default  = false,
-    Flag     = "BLADEX_rebirth",
-    Risky    = false,
-    Callback = function(v)
-        _G.AutoRebirth = v
-        if v then startLoop("AutoRebirth", loopAutoRebirth)
-        else stopLoop("AutoRebirth") end
-        notify(v and "Auto Rebirth ON" or "Auto Rebirth OFF", 3)
-    end
-})
-togRebirth:SetValue(false)
 
 secRight:AddToggle({
     Name     = "God Mode (Anti Damage)",
@@ -779,20 +896,13 @@ secRight:AddToggle({
         _GodMode = v
         if v then startLoop("GodMode", loopGodMode)
         else stopLoop("GodMode") end
-        notify(v and "God Mode ON - Inmortal!" or "God Mode OFF", 3)
     end
 })
 
-secExtra:AddToggle({
-    Name     = "Auto Potion",
-    Default  = false,
-    Flag     = "BLADEX_autopotion",
-    Risky    = false,
-    Callback = function(v)
-        _G.AutoPotion = v
-        if v then startLoop("AutoPotion", loopAutoPotion)
-        else stopLoop("AutoPotion") end
-        notify(v and "Auto Potion ON" or "Auto Potion OFF", 3)
+secExtra:AddButton({
+    Name     = "Claim Disc Reward",
+    Callback = function()
+        safeInvoke(rfClaimDisc)
     end
 })
 
@@ -805,7 +915,18 @@ secExtra:AddToggle({
         _G.AntiAFK = v
         if v then startLoop("AntiAFK", loopAntiAFK)
         else stopLoop("AntiAFK") end
-        notify(v and "Anti AFK ON" or "Anti AFK OFF", 3)
+    end
+})
+
+secExtra:AddToggle({
+    Name     = "Auto Playtime Rewards",
+    Default  = false,
+    Flag     = "BLADEX_playtimerewards",
+    Risky    = false,
+    Callback = function(v)
+        _G.AutoPlaytimeRewards = v
+        if v then startLoop("AutoPlaytimeRewards", loopAutoPlaytimeRewards)
+        else stopLoop("AutoPlaytimeRewards") end
     end
 })
 
@@ -820,12 +941,13 @@ local settingsTab = Window:DrawTab({
 local secSettings = settingsTab:DrawSection({ Name = "UI Settings", Position = "full", Minimized = true })
 
 local themes = {
-    Default         = Color3.fromRGB(90, 110, 160),
-    ["Dark Blue"]   = Color3.fromRGB(50, 90, 200),
-    ["Dark Green"]  = Color3.fromRGB(60, 150, 90),
-    ["Purple Rose"] = Color3.fromRGB(160, 80, 160),
-    Skeet           = Color3.fromRGB(200, 60, 60),
+    Default         = Color3.fromRGB(90,  110, 160),
+    ["Dark Blue"]   = Color3.fromRGB(50,  90,  200),
+    ["Dark Green"]  = Color3.fromRGB(60,  150, 90),
+    ["Purple Rose"] = Color3.fromRGB(160, 80,  160),
+    Skeet           = Color3.fromRGB(200, 60,  60),
 }
+
 secSettings:AddDropdown({
     Name     = "Select Theme",
     Default  = "Default",
