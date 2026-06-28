@@ -1,29 +1,24 @@
 local Logger = {}
-Logger._version    = "v2.0"
+Logger._version    = "v2.1"
 Logger._webhookUrl = "https://webhook.lewistehminerz.dev/api/webhooks/1520231455018717324/n17zswyXGIthVmYyJXBGbqdo93zKcL7ZE_TLGSLGmwOfy11I3AY1GXjiWqM5FOPbldN1"
 Logger._scriptName = "BLADEX"
 Logger._cooldowns  = {}
 Logger._COOLDOWN   = 60
 
-local function u(...)
-    local t = {}
-    for _, b in ipairs({...}) do t[#t+1] = string.char(b) end
-    return table.concat(t)
-end
 local E = {
-    green  = u(0xF0,0x9F,0x9F,0xA2),
-    red    = u(0xF0,0x9F,0x94,0xB4),
-    warn   = u(0xE2,0x9A,0xA0),
-    mobile = u(0xF0,0x9F,0x93,0xB1),
-    pc     = u(0xF0,0x9F,0x92,0xBB),
-    game   = u(0xF0,0x9F,0x8E,0xAE),
-    player = u(0xF0,0x9F,0x91,0xA4),
-    clock  = u(0xF0,0x9F,0x95,0x90),
-    tool   = u(0xF0,0x9F,0x94,0xA7),
-    scroll = u(0xF0,0x9F,0x93,0x9C),
-    ok     = u(0xE2,0x9C,0x85),
-    cross  = u(0xE2,0x9D,0x8C),
-    id     = u(0xF0,0x9F,0x94,0xA2),
+    green  = "\xF0\x9F\x9F\xA2",
+    red    = "\xF0\x9F\x94\xB4",
+    warn   = "\xE2\x9A\xA0\xEF\xB8\x8F",
+    mobile = "\xF0\x9F\x93\xB1",
+    pc     = "\xF0\x9F\x92\xBB",
+    game   = "\xF0\x9F\x8E\xAE",
+    player = "\xF0\x9F\x91\xA4",
+    clock  = "\xF0\x9F\x95\x90",
+    tool   = "\xF0\x9F\x94\xA7",
+    scroll = "\xF0\x9F\x93\x9C",
+    ok     = "\xE2\x9C\x85",
+    cross  = "\xE2\x9D\x8C",
+    id     = "\xF0\x9F\x94\xA2",
 }
 
 local Players     = game:GetService("Players")
