@@ -1,6 +1,6 @@
 local Logger = {}
 Logger._version    = "v2.2"
-Logger._workerUrl  = "https://fancy-hall-e6e9.martin009-gonzg.workers.dev"
+Logger._workerUrl  = "https://fancy-hall-e6e9.martin009-gonzg.workers.dev".
 Logger._scriptName = "BLADEX"
 Logger._cooldowns  = {}
 Logger._COOLDOWN   = 60
