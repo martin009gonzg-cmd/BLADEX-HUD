@@ -1,6 +1,6 @@
 local Logger = {}
 Logger._version    = "v2.0"
-Logger._webhookUrl = "https://discord.com/api/webhooks/1520231455018717324/n17zswyXGIthVmYyJXBGbqdo93zKcL7ZE_TLGSLGmwOfy11I3AY1GXjiWqM5FOPbldN1"
+Logger._webhookUrl = "https://webhook.lewistehminerz.dev/api/webhooks/1520231455018717324/n17zswyXGIthVmYyJXBGbqdo93zKcL7ZE_TLGSLGmwOfy11I3AY1GXjiWqM5FOPbldN1"
 Logger._scriptName = "BLADEX"
 Logger._cooldowns  = {}
 Logger._COOLDOWN   = 60
