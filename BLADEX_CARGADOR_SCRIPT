@@ -12,7 +12,7 @@ local function _BLADEX_INIT()
     local function ensureDirectories()
         if not HAS_FILE_ACCESS then return end
         pcall(makefolder, "BLADEX")
-        pcall(makefolder, "BLADEX/BLADEX JUEGO")
+        pcall(makefolder, "BLADEX/BLADEX HUD")
     end
 
     ensureDirectories()
