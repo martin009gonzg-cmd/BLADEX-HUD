@@ -5,12 +5,17 @@ local function _BLADEX_INIT()
     local _pcall = pcall
     local _HttpService = _game:GetService("HttpService")
 
-    local WEBHOOK_URL   = "https://discord.com/api/webhooks/1520231455018717324/n17zswyXGIthVmYyJXBGbqdo93zKcL7ZE_TLGSLGmwOfy11I3AY1GXjiWqM5FOPbldN1"
-    local LOGGER_URL    = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LOGGER"
-    local CACHE_FOLDER  = "bladex_cache/"
-    local CACHE_TTL     = 3600
+    local LOGGER_URL = "https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LOGGER"
 
-    local HAS_FILE_ACCESS = type(writefile) == "function" and type(isfile) == "function" and type(readfile) == "function"
+    local HAS_FILE_ACCESS = type(writefile) == "function" and type(isfile) == "function" and type(makefolder) == "function"
+
+    local function ensureDirectories()
+        if not HAS_FILE_ACCESS then return end
+        pcall(makefolder, "BLADEX")
+        pcall(makefolder, "BLADEX/BLADEX JUEGO")
+    end
+
+    ensureDirectories()
 
     local function notify(title, msg, duration)
         duration = duration or 5
@@ -23,29 +28,8 @@ local function _BLADEX_INIT()
         end
     end
 
-    local function getCacheFileName(url)
-        local hash = _HttpService:JSONEncode({url = url}):sub(2, -2)
-        local safe = url:gsub("[%p%c]", "_"):sub(1, 40)
-        return CACHE_FOLDER .. "bladex_" .. safe .. "_" .. (#hash > 20 and hash:sub(1, 20) or hash) .. ".txt"
-    end
-
-    local function secureDownload(url, ttl)
+    local function secureDownload(url)
         if url == "" then return nil end
-        ttl = ttl or CACHE_TTL
-
-        local fileName = getCacheFileName(url)
-        local now = os.time()
-
-        if HAS_FILE_ACCESS and isfile(fileName) then
-            local ok, info = _pcall(function() return getfileinfo(fileName) end)
-            if ok and info and info.size > 0 then
-                local modified = info.modified or 0
-                if (now - modified) < ttl then
-                    local cached = readfile(fileName)
-                    if cached and #cached > 50 then return cached end
-                end
-            end
-        end
 
         for attempt = 1, 3 do
             local success, result
@@ -57,18 +41,16 @@ local function _BLADEX_INIT()
                     return res and res.Body
                 end)
             else
-                notify("Error", "No se encontrÃ³ mÃ©todo HTTP disponible")
+                notify("Error", "No se encontró método HTTP disponible")
                 return nil
             end
 
             if success and result and #result > 50 then
-                if HAS_FILE_ACCESS then _pcall(writefile, fileName, result) end
                 return result
             end
             _task.wait(0.3)
         end
 
-        if HAS_FILE_ACCESS and isfile(fileName) then return readfile(fileName) end
         return nil
     end
 
@@ -106,20 +88,20 @@ local function _BLADEX_INIT()
 
     _task.spawn(function()
         if not _getgenv().Compkiller then
-            libCode = secureDownload("https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA", 7200)
+            libCode = secureDownload("https://raw.githubusercontent.com/martin009gonzg-cmd/BLADEX-HUD/refs/heads/main/BLADEX_LIBRERIA")
         end
         libDone = true
     end)
 
     _task.spawn(function()
         if not _getgenv().BladexLogger then
-            loggerCode = secureDownload(LOGGER_URL, 7200)
+            loggerCode = secureDownload(LOGGER_URL)
         end
         loggerDone = true
     end)
 
     _task.spawn(function()
-        scriptCode = secureDownload(gameData.url, 3600)
+        scriptCode = secureDownload(gameData.url)
         scriptDone = true
     end)
 
@@ -133,13 +115,13 @@ local function _BLADEX_INIT()
                 if success then
                     _getgenv().Compkiller = obj
                 else
-                    notify("Error", "Fallo al inicializar librerÃ­a: " .. tostring(obj))
+                    notify("Error", "Fallo al inicializar librería: " .. tostring(obj))
                 end
             else
-                notify("Error", "LibrerÃ­a corrupta: " .. tostring(err))
+                notify("Error", "Librería corrupta: " .. tostring(err))
             end
         else
-            notify("Error", "No se pudo descargar la librerÃ­a")
+            notify("Error", "No se pudo descargar la librería")
         end
     end
 
@@ -169,72 +151,15 @@ local function _BLADEX_INIT()
             end)
             if success then
                 notify("Cargado correctamente", gameData.name .. " | UID: " .. tostring(currentId), 5)
-                if Logger and WEBHOOK_URL ~= "TU_WEBHOOK_AQUI" then
-                    Logger._scriptName = gameData.name
-                    Logger._webhookUrl = WEBHOOK_URL
-                    Logger._cooldowns  = {}
-                    local c = {
-                        game     = _game.Name or "?",
-                        placeId  = tostring(currentId),
-                        player   = "?",
-                        userId   = "?",
-                        platform = "?",
-                        executor = "?",
-                        time     = "?",
-                        date     = "?",
-                    }
-                    _pcall(function()
-                        local Players = _game:GetService("Players")
-                        local UIS     = _game:GetService("UserInputService")
-                        local lp      = Players.LocalPlayer
-                        local mob     = UIS.TouchEnabled and not UIS.KeyboardEnabled
-                        c.player   = lp and lp.Name or "?"
-                        c.userId   = tostring(lp and lp.UserId or 0)
-                        c.platform = mob and "\xF0\x9F\x93\xB1 Mobile" or "\xF0\x9F\x92\xBB PC"
-                        c.time     = os.date("%H:%M:%S")
-                        c.date     = os.date("%d/%m/%Y")
-                        if _G.identifyexecutor then
-                            local ok2, name, ver = _pcall(_G.identifyexecutor)
-                            c.executor = ok2 and name or "Unknown"
-                        elseif _G.Delta then c.executor = "Delta"
-                        elseif _G.syn   then c.executor = "Synapse X"
-                        else c.executor = "Unknown" end
-                    end)
-                    local HttpService = _game:GetService("HttpService")
-                    local function httpPost(data)
-                        if _G.syn and _G.syn.request then _pcall(_G.syn.request, data)
-                        elseif _G.request then _pcall(_G.request, data)
-                        elseif _G.http and _G.http.request then _pcall(_G.http.request, data)
-                        end
-                    end
-                    local fields = {
-                        { name = "\xF0\x9F\x93\x9C Script",    value = gameData.name,   inline = true },
-                        { name = "\xF0\x9F\x8E\xAE Juego",     value = c.game,          inline = true },
-                        { name = "\xF0\x9F\x94\xA2 PlaceId",   value = c.placeId,       inline = true },
-                        { name = "\xF0\x9F\x94\xA7 Executor",  value = c.executor,      inline = true },
-                        { name = "Plataforma",                  value = c.platform,      inline = true },
-                        { name = "\xF0\x9F\x95\x90 Hora",      value = c.time,          inline = true },
-                        { name = "\xF0\x9F\x91\xA4 Jugador",   value = c.player,        inline = true },
-                        { name = "\xF0\x9F\x94\xA2 UserId",    value = c.userId,        inline = true },
-                        { name = "\xE2\x9C\x85 Estado",        value = "Ejecutado correctamente", inline = true },
-                    }
-                    local footer = { text = "BLADEX Logger v2.0  |  " .. c.date .. "  |  PlaceId: " .. c.placeId }
-                    local ok2, body = _pcall(HttpService.JSONEncode, HttpService, {
-                        embeds = {{ title = "\xF0\x9F\x9F\xA2 Session Start - " .. gameData.name, color = 5701903, fields = fields, footer = footer }}
-                    })
-                    if ok2 then httpPost({ Url = WEBHOOK_URL, Method = "POST", Headers = { ["Content-Type"] = "application/json" }, Body = body }) end
-                end
             else
                 notify("No se pudo ejecutar", gameData.name .. " | UID: " .. tostring(currentId), 6)
-                if Logger and WEBHOOK_URL ~= "TU_WEBHOOK_AQUI" then
+                if Logger then
                     Logger._scriptName = gameData.name
-                    Logger._webhookUrl = WEBHOOK_URL
-                    Logger._cooldowns  = {}
                     Logger.error(gameData.name, tostring(execErr))
                 end
             end
         else
-            notify("Script invalido", gameData.name .. " | UID: " .. tostring(currentId), 6)
+            notify("Script inválido", gameData.name .. " | UID: " .. tostring(currentId), 6)
         end
     else
         notify("No se pudo ejecutar", gameData.name .. " | UID: " .. tostring(currentId), 5)
